@@ -220,7 +220,8 @@ button { color: var(--fb-text); }
   stroke-linejoin: round;
 }
 #zoom-controls #view-toggle,
-#zoom-controls #db-schema-toggle {
+#zoom-controls #db-schema-toggle,
+#zoom-controls #group-toggle {
   width: auto;
   min-width: 100px;
   padding: 0 14px;
@@ -228,9 +229,72 @@ button { color: var(--fb-text); }
   font-weight: 600;
   gap: 6px;
 }
-#zoom-controls #db-schema-toggle[disabled] { opacity: 0.6; cursor: default; }
+#zoom-controls #db-schema-toggle[disabled],
+#zoom-controls #group-toggle[disabled] { opacity: 0.6; cursor: default; }
 #zoom-controls #db-schema-toggle.live-active { border-color: #5146B8; color: #5146B8; }
 [data-mode="dark"] #zoom-controls #db-schema-toggle.live-active { border-color: #A29AFF; color: #A29AFF; }
+#zoom-controls #group-toggle.groups-active { border-color: #5146B8; color: #5146B8; }
+[data-mode="dark"] #zoom-controls #group-toggle.groups-active { border-color: #A29AFF; color: #A29AFF; }
+
+#database-select {
+  height: 36px;
+  min-width: 160px;
+  max-width: 220px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 0.5px solid var(--border, var(--fb-border));
+  background: var(--surface-2, var(--fb-surface2));
+  color: var(--text-primary, var(--fb-text));
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-sans, sans-serif);
+  cursor: pointer;
+}
+#database-select[disabled] { opacity: 0.6; cursor: default; }
+
+.group-menu {
+  position: fixed;
+  background: var(--surface-2, var(--fb-surface2));
+  border: 0.5px solid var(--border, var(--fb-border));
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  z-index: 1000;
+  min-width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+  font-family: var(--font-sans, sans-serif);
+  font-size: 13px;
+  color: var(--text-primary, var(--fb-text));
+  user-select: none;
+  -webkit-user-select: none;
+}
+.group-menu-header {
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary, var(--fb-text-sec));
+  border-bottom: 0.5px solid var(--border, var(--fb-border));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.group-menu-header .group-menu-actions { display: flex; gap: 10px; text-transform: none; letter-spacing: normal; }
+.group-menu-header .group-menu-actions span { cursor: pointer; text-decoration: underline; }
+.group-menu-item {
+  padding: 9px 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.group-menu-item:hover { background: var(--surface-1, var(--fb-surface1)); }
+.group-menu-item input { margin-top: 3px; cursor: pointer; }
+.group-menu-item .group-name { font-weight: 600; }
+.group-menu-item .group-tables { display: block; font-size: 11px; opacity: 0.7; margin-top: 2px; }
+.group-menu-empty { padding: 9px 14px; color: var(--text-secondary, var(--fb-text-sec)); font-style: italic; }
 #zoom-label { font-size: 13px; color: var(--text-secondary, var(--fb-text-sec)); min-width: 44px; text-align: center; font-family: var(--font-sans, sans-serif); transition: color 0.3s ease; }
 #hint { flex: 0 0 auto; font-size: 12px; color: var(--text-secondary, var(--fb-text-sec)); text-align: center; padding-top: 4px; font-family: var(--font-sans, sans-serif); user-select: none; -webkit-user-select: none; transition: color 0.3s ease; }
 
@@ -300,8 +364,14 @@ button { color: var(--fb-text); }
     <button id="view-toggle" type="button" aria-label="Toggle view" title="Switch to Form view">
       <span>Forms</span>
     </button>
-    <button id="db-schema-toggle" type="button" aria-label="Load schema from database" title="Introspect the live Postgres database configured in .env">
+    <select id="database-select" aria-label="Select Postgres database" title="Choose which Postgres database to introspect">
+      <option value="">Database…</option>
+    </select>
+    <button id="db-schema-toggle" type="button" aria-label="Load schema from database" title="Introspect the selected Postgres database" disabled>
       <span>Load DB Schema</span>
+    </button>
+    <button id="group-toggle" type="button" aria-label="Group tables by connectivity" title="Group tables by how connected they are">
+      <span>Group Tables</span>
     </button>
     <button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg>
@@ -658,9 +728,13 @@ async function renderDiagram(view, definition) {
   wireReverseRelations(layer, view);
 }
 
+function currentDiagramFor(view) {
+  return groupState[view] ? buildFilteredDiagram(view) : viewDefs[view].diagram;
+}
+
 async function renderBothDiagrams() {
-  await renderDiagram('workflow', viewDefs.workflow.diagram);
-  await renderDiagram('form', viewDefs.form.diagram);
+  await renderDiagram('workflow', currentDiagramFor('workflow'));
+  await renderDiagram('form', currentDiagramFor('form'));
 }
 
 /* ---------- View switching ---------- */
@@ -730,7 +804,7 @@ themeBtn.addEventListener('click', async () => {
   const viewport = document.getElementById('erd-viewport');
   viewport.style.opacity = '.82';
   await renderBothDiagrams();
-  if (viewDefs.live) await renderDiagram('live', viewDefs.live.diagram);
+  if (viewDefs.live) await renderDiagram('live', currentDiagramFor('live'));
   // Re-render replaces each layer's SVG from scratch, which loses the
   // inline transform — reapply the pan/zoom the user already had instead
   // of fitting to view, so a theme flip doesn't reset their position.
@@ -750,18 +824,52 @@ themeBtn.addEventListener('click', async () => {
    pan-zoom / FK-navigation code path as the static views above. */
 
 const dbBtn = document.getElementById('db-schema-toggle');
+const dbSelect = document.getElementById('database-select');
 let viewBeforeLive = null;
 
+async function loadDatabaseList() {
+  try {
+    const res = await fetch('/api/databases');
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || body.error || `HTTP ${res.status}`);
+    for (const name of body.databases) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      dbSelect.appendChild(opt);
+    }
+  } catch (err) {
+    console.warn('Could not list databases:', err.message);
+    dbSelect.title = `Could not list databases: ${err.message}`;
+  }
+}
+
+dbSelect.addEventListener('change', () => {
+  dbBtn.disabled = !dbSelect.value;
+  // A new database pick invalidates any previously loaded live schema.
+  delete viewDefs.live;
+  if (dbBtn.classList.contains('live-active')) {
+    switchView(viewBeforeLive || 'workflow');
+    dbBtn.classList.remove('live-active');
+  }
+  dbBtn.querySelector('span').textContent = 'Load DB Schema';
+  dbBtn.title = 'Introspect the selected Postgres database';
+});
+
 async function loadLiveSchema() {
+  const databaseName = dbSelect.value;
+  if (!databaseName) return;
   dbBtn.disabled = true;
+  dbSelect.disabled = true;
   dbBtn.querySelector('span').textContent = 'Loading…';
   try {
-    const res = await fetch('/api/schema');
+    const res = await fetch(`/api/schema?database=${encodeURIComponent(databaseName)}`);
     const body = await res.json();
     if (!res.ok) throw new Error(body.detail || body.error || `HTTP ${res.status}`);
 
-    viewDefs.live = { diagram: body.diagram, fkTargets: body.fkTargets };
+    viewDefs.live = { diagram: body.diagram, fkTargets: body.fkTargets, rawDiagram: body.diagram };
     await renderDiagram('live', body.diagram);
+    resetGroupStateFor('live');
 
     viewBeforeLive = currentView;
     switchView('live');
@@ -770,9 +878,10 @@ async function loadLiveSchema() {
     dbBtn.title = 'Click again to return to the static diagram';
   } catch (err) {
     dbBtn.querySelector('span').textContent = 'Load DB Schema';
-    alert(`Could not load schema from the database:\n${err.message}\n\nCheck .env and that Postgres is running.`);
+    alert(`Could not load schema from "${databaseName}":\n${err.message}\n\nCheck .env and that Postgres is running.`);
   } finally {
-    dbBtn.disabled = false;
+    dbBtn.disabled = !dbSelect.value;
+    dbSelect.disabled = false;
   }
 }
 
@@ -791,10 +900,199 @@ dbBtn.addEventListener('click', () => {
   }
 });
 
+/* ---------- Group tables by connectivity ----------
+   "Group Tables" parses the active view's raw Mermaid erDiagram
+   definition into tables + relationships, then unions tables that are
+   linked (directly or transitively) by a foreign key into connected
+   components. Each component becomes a checkable "group" in a
+   dropdown; unchecking a group re-renders the same layer using only
+   the tables/relationships from the still-checked groups, reusing the
+   normal renderDiagram() pipeline. */
+
+viewDefs.workflow.rawDiagram = data.workflowDiagram;
+viewDefs.form.rawDiagram = data.formDiagram;
+
+const groupState = {}; // view -> { groups: [{id, tables: [name,...]}], checked: Set<groupId> }
+
+function parseDiagram(definition) {
+  const tables = new Map(); // name -> block text (without surrounding braces)
+  const relationships = []; // { a, b }
+  const tableBlockRe = /^\s*([A-Za-z0-9_]+)\s*\{([\s\S]*?)\n\s*\}/gm;
+  let m;
+  while ((m = tableBlockRe.exec(definition))) {
+    tables.set(m[1], m[2]);
+  }
+  const relRe = /^\s*([A-Za-z0-9_]+)\s+(\S*\|\|--o\S*)\s+([A-Za-z0-9_]+)\s*:\s*"([^"]*)"/gm;
+  while ((m = relRe.exec(definition))) {
+    relationships.push({ a: m[1], symbol: m[2], b: m[3], label: m[4] });
+  }
+  return { tables, relationships };
+}
+
+function computeGroups(view) {
+  const raw = viewDefs[view]?.rawDiagram;
+  if (!raw) return [];
+  const { tables, relationships } = parseDiagram(raw);
+
+  const parent = new Map([...tables.keys()].map((name) => [name, name]));
+  function find(x) { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; }
+  function union(x, y) { const rx = find(x), ry = find(y); if (rx !== ry) parent.set(rx, ry); }
+
+  for (const rel of relationships) {
+    if (tables.has(rel.a) && tables.has(rel.b)) union(rel.a, rel.b);
+  }
+
+  const byRoot = new Map();
+  for (const name of tables.keys()) {
+    const root = find(name);
+    if (!byRoot.has(root)) byRoot.set(root, []);
+    byRoot.get(root).push(name);
+  }
+
+  const groups = [...byRoot.values()]
+    .map((names) => names.sort())
+    .sort((a, b) => b.length - a.length || a[0].localeCompare(b[0]))
+    .map((names, index) => ({ id: `g${index}`, tables: names }));
+
+  return groups;
+}
+
+function ensureGroupState(view) {
+  if (!groupState[view]) {
+    const groups = computeGroups(view);
+    groupState[view] = { groups, checked: new Set(groups.map((g) => g.id)) };
+  }
+  return groupState[view];
+}
+
+function resetGroupStateFor(view) {
+  delete groupState[view];
+}
+
+function buildFilteredDiagram(view) {
+  const state = groupState[view];
+  const raw = viewDefs[view]?.rawDiagram;
+  if (!state || !raw) return raw;
+  const { tables, relationships } = parseDiagram(raw);
+  const visibleTables = new Set(
+    state.groups.filter((g) => state.checked.has(g.id)).flatMap((g) => g.tables)
+  );
+
+  const lines = ['erDiagram'];
+  for (const rel of relationships) {
+    if (visibleTables.has(rel.a) && visibleTables.has(rel.b)) {
+      lines.push(`    ${rel.a} ${rel.symbol} ${rel.b} : "${rel.label}"`);
+    }
+  }
+  lines.push('');
+  for (const name of [...tables.keys()].sort()) {
+    if (!visibleTables.has(name)) continue;
+    lines.push(`    ${name} {${tables.get(name)}\n    }`);
+  }
+  return lines.join('\n');
+}
+
+async function applyGroupFilter(view) {
+  const filtered = buildFilteredDiagram(view);
+  if (filtered === undefined) return;
+  await renderDiagram(view, filtered);
+  if (view === currentView) fitToView(false);
+}
+
+function closeGroupMenu() {
+  const existing = document.getElementById('group-menu');
+  if (existing) existing.remove();
+}
+
+function renderGroupMenu() {
+  closeGroupMenu();
+  const state = ensureGroupState(currentView);
+
+  const menu = document.createElement('div');
+  menu.id = 'group-menu';
+  menu.className = 'group-menu';
+
+  const header = document.createElement('div');
+  header.className = 'group-menu-header';
+  const label = document.createElement('span');
+  label.textContent = `${state.groups.length} group${state.groups.length !== 1 ? 's' : ''}`;
+  const actions = document.createElement('div');
+  actions.className = 'group-menu-actions';
+  const allBtn = document.createElement('span');
+  allBtn.textContent = 'All';
+  const noneBtn = document.createElement('span');
+  noneBtn.textContent = 'None';
+  actions.append(allBtn, noneBtn);
+  header.append(label, actions);
+  menu.appendChild(header);
+
+  if (state.groups.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'group-menu-empty';
+    empty.textContent = 'No tables to group.';
+    menu.appendChild(empty);
+  }
+
+  state.groups.forEach((group, index) => {
+    const item = document.createElement('label');
+    item.className = 'group-menu-item';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = state.checked.has(group.id);
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) state.checked.add(group.id); else state.checked.delete(group.id);
+      applyGroupFilter(currentView);
+    });
+
+    const text = document.createElement('span');
+    const preview = group.tables.slice(0, 4).join(', ') + (group.tables.length > 4 ? `, +${group.tables.length - 4} more` : '');
+    text.innerHTML = `<span class="group-name">Group ${index + 1} — ${group.tables.length} table${group.tables.length !== 1 ? 's' : ''}</span><span class="group-tables">${preview}</span>`;
+
+    item.append(checkbox, text);
+    menu.appendChild(item);
+  });
+
+  allBtn.addEventListener('click', () => {
+    state.groups.forEach((g) => state.checked.add(g.id));
+    renderGroupMenu();
+    applyGroupFilter(currentView);
+  });
+  noneBtn.addEventListener('click', () => {
+    state.checked.clear();
+    renderGroupMenu();
+    applyGroupFilter(currentView);
+  });
+
+  document.body.appendChild(menu);
+  const rect = groupBtn.getBoundingClientRect();
+  let left = rect.left;
+  let top = rect.bottom + 6;
+  const menuRect = menu.getBoundingClientRect();
+  if (left + menuRect.width > window.innerWidth - 12) left = window.innerWidth - menuRect.width - 12;
+  if (top + menuRect.height > window.innerHeight - 12) top = rect.top - menuRect.height - 6;
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+
+  menu.addEventListener('click', (e) => e.stopPropagation());
+  setTimeout(() => document.addEventListener('click', closeGroupMenu, { once: true }), 0);
+}
+
+const groupBtn = document.getElementById('group-toggle');
+groupBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  closeReverseMenu();
+  const existing = document.getElementById('group-menu');
+  if (existing) { closeGroupMenu(); return; }
+  groupBtn.classList.add('groups-active');
+  renderGroupMenu();
+});
+
 /* ---------- Boot ---------- */
 
 updateThemeButton();
 await renderBothDiagrams();
+loadDatabaseList();
 initPanZoom();
 requestAnimationFrame(() => requestAnimationFrame(() => fitToView(false)));
 </script>

@@ -26,22 +26,45 @@ const { fetchSchema } = require('./lib/schema');
 const PORT = process.env.PORT || 4400;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
-// Built lazily on first /api/schema request, not at startup, so the
+// Pools are cached per-database name, since Postgres connections are
+// bound to a single database and a user may switch between several
+// (see GET /api/databases below). Built lazily, not at startup, so the
 // static viewer still works fine even if no Postgres is configured.
-let pool = null;
-function getPool() {
-  if (!pool) {
-    pool = process.env.DATABASE_URL
-      ? new Pool({ connectionString: process.env.DATABASE_URL })
-      : new Pool({
-          host: process.env.PGHOST || 'localhost',
-          port: Number(process.env.PGPORT) || 5432,
-          user: process.env.PGUSER || 'postgres',
-          password: process.env.PGPASSWORD || '',
-          database: process.env.PGDATABASE || 'postgres',
-        });
+const pools = new Map();
+
+function poolConfigFor(databaseName) {
+  if (process.env.DATABASE_URL) {
+    const url = new URL(process.env.DATABASE_URL);
+    if (databaseName) url.pathname = `/${databaseName}`;
+    return { connectionString: url.toString() };
   }
-  return pool;
+  return {
+    host: process.env.PGHOST || 'localhost',
+    port: Number(process.env.PGPORT) || 5432,
+    user: process.env.PGUSER || 'postgres',
+    password: process.env.PGPASSWORD || '',
+    database: databaseName || process.env.PGDATABASE || 'postgres',
+  };
+}
+
+function getPool(databaseName) {
+  const key = databaseName || '__default__';
+  if (!pools.has(key)) {
+    pools.set(key, new Pool(poolConfigFor(databaseName)));
+  }
+  return pools.get(key);
+}
+
+const DATABASES_QUERY = `
+  select datname
+  from pg_database
+  where datistemplate = false and datallowconn = true
+  order by datname;
+`;
+
+async function listDatabases(db) {
+  const res = await db.query(DATABASES_QUERY);
+  return res.rows.map((row) => row.datname);
 }
 
 function sendJson(res, statusCode, payload) {
@@ -55,13 +78,27 @@ function sendJson(res, statusCode, payload) {
 
 async function handleSchemaRequest(req, res, query) {
   const schemaName = query.get('schema') || process.env.PGSCHEMA || 'public';
+  const databaseName = query.get('database') || undefined;
   try {
-    const result = await fetchSchema(getPool(), schemaName);
+    const result = await fetchSchema(getPool(databaseName), schemaName);
     sendJson(res, 200, result);
   } catch (err) {
     console.error('GET /api/schema failed:', err.message);
     sendJson(res, 502, {
       error: 'Could not read schema from Postgres.',
+      detail: err.message,
+    });
+  }
+}
+
+async function handleDatabasesRequest(req, res) {
+  try {
+    const databases = await listDatabases(getPool());
+    sendJson(res, 200, { databases });
+  } catch (err) {
+    console.error('GET /api/databases failed:', err.message);
+    sendJson(res, 502, {
+      error: 'Could not list databases from Postgres.',
       detail: err.message,
     });
   }
@@ -84,6 +121,11 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && urlPath === '/api/schema') {
     handleSchemaRequest(req, res, requestUrl.searchParams);
+    return;
+  }
+
+  if (req.method === 'GET' && urlPath === '/api/databases') {
+    handleDatabasesRequest(req, res);
     return;
   }
 
