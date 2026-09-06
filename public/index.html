@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ERD Viewer</title>
+<style>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+:root {
+  --fb-surface1: #F8FAFC;
+  --fb-surface2: #FFFFFF;
+  --fb-text: #111827;
+  --fb-text-sec: #475569;
+  --fb-border: #CBD5E1;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-mode]) {
+    --fb-surface1: #111827;
+    --fb-surface2: #0F172A;
+    --fb-text: #F8FAFC;
+    --fb-text-sec: #CBD5E1;
+    --fb-border: #475569;
+  }
+}
+[data-mode="dark"] {
+  --fb-surface1: #111827;
+  --fb-surface2: #0F172A;
+  --fb-text: #F8FAFC;
+  --fb-text-sec: #CBD5E1;
+  --fb-border: #475569;
+  color-scheme: dark;
+}
+[data-mode="light"] {
+  --fb-surface1: #F8FAFC;
+  --fb-surface2: #FFFFFF;
+  --fb-text: #111827;
+  --fb-text-sec: #475569;
+  --fb-border: #CBD5E1;
+  color-scheme: light;
+}
+
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; }
+body { background: var(--surface-0, var(--fb-surface2)); color: var(--fb-text); transition: background-color 0.3s ease, color 0.3s ease; }
+button { color: var(--fb-text); }
+
+#erd-wrap {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-0, var(--fb-surface2));
+  height: 100dvh;
+  max-height: 100dvh;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  overflow: hidden;
+  transition: background-color 0.3s ease;
+}
+#erd-viewport {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  background: var(--surface-1, var(--fb-surface1));
+  border-radius: 12px;
+  border: 0.5px solid var(--border, var(--fb-border));
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  contain: layout paint size;
+  transition: background-color 0.3s ease, border-color 0.3s ease, opacity 0.25s ease;
+}
+#erd-viewport:focus { outline: none; }
+#erd-viewport.grabbing { cursor: grabbing; }
+#erd-inner { position: absolute; inset: 0; overflow: hidden; }
+
+.erd-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .28s ease, filter .28s ease;
+  will-change: transform, opacity;
+}
+.erd-layer.active { opacity: 1; visibility: visible; pointer-events: auto; filter: none; }
+.erd-layer.entering, .erd-layer.leaving { visibility: visible; opacity: 0; pointer-events: none; filter: blur(1px); }
+
+/* NOTE: we intentionally do NOT put CSS transitions on individual SVG
+   sub-elements (rect/path/text/tspan/...) here. Each theme toggle can touch
+   hundreds of nodes at once (postProcessSvg re-colors every row/text/edge
+   label), and animating `fill`/`stroke`/`color` on that many elements
+   simultaneously is what made theme switching feel laggy. Instead the
+   whole viewport briefly fades via opacity (see theme-toggle handler),
+   which reads as a smooth crossfade without per-element animation cost. */
+
+.erd-layer svg.erDiagram foreignObject { overflow: visible !important; }
+
+.erd-layer svg.erDiagram { max-width: none !important; display: block; overflow: visible !important; }
+.erd-layer svg.erDiagram .divider path { stroke-opacity: 0.5; }
+.erd-layer svg.erDiagram .row-rect-odd path,
+.erd-layer svg.erDiagram .row-rect-odd rect,
+.erd-layer svg.erDiagram .row-rect-even path,
+.erd-layer svg.erDiagram .row-rect-even rect { stroke: none !important; }
+.erd-layer svg.erDiagram .er.entityLabel { fill: #FFFFFF !important; font-weight: 700 !important; }
+
+/* Entity header background - different colors for light/dark */
+[data-mode="light"] .erd-layer svg.erDiagram .er.entityBox > rect,
+[data-mode="light"] .erd-layer svg.erDiagram .er.entityBox > path,
+[data-mode="light"] .erd-layer svg.erDiagram .node > rect:first-child,
+[data-mode="light"] .erd-layer svg.erDiagram .node > path:first-child {
+  fill: #5146B8 !important;
+}
+
+/* Attribute text - dark in light mode, light in dark mode */
+[data-mode="light"] .erd-layer svg.erDiagram text:not(.entityLabel),
+[data-mode="light"] .erd-layer svg.erDiagram tspan:not(.entityLabel),
+[data-mode="light"] .erd-layer svg.erDiagram .nodeLabel {
+  fill: #111827 !important;
+  color: #111827 !important;
+}
+
+/* Row backgrounds */
+[data-mode="light"] .erd-layer svg.erDiagram .er.attributeBoxOdd rect,
+[data-mode="light"] .erd-layer svg.erDiagram .er.attributeBoxEven rect,
+[data-mode="light"] .erd-layer svg.erDiagram .row-rect-odd rect,
+[data-mode="light"] .erd-layer svg.erDiagram .row-rect-even rect {
+  fill: #F8FAFC !important;
+}
+
+.erd-layer svg.erDiagram .label, .erd-layer svg.erDiagram .nodeLabel { paint-order: stroke; }
+.erd-layer svg.erDiagram .label,
+.erd-layer svg.erDiagram .nodeLabel {
+  paint-order: stroke;
+  font-weight: 500 !important;
+}
+.erd-layer svg.erDiagram .edgeLabel,
+.erd-layer svg.erDiagram .edgeLabel .label,
+.erd-layer svg.erDiagram .edgeLabel .nodeLabel {
+  color: #334155 !important;
+  fill: #334155 !important;
+  font-weight: 600 !important;
+  overflow: visible !important;
+}
+.erd-layer svg.erDiagram .edgeLabel rect {
+  fill: #FFFFFF !important;
+  stroke: #CBD5E1 !important;
+  opacity: 0.98 !important;
+}
+.erd-layer svg.erDiagram .edgeLabel foreignObject,
+.erd-layer svg.erDiagram .edgeLabel foreignObject div,
+.erd-layer svg.erDiagram .edgeLabel foreignObject span {
+  color: #334155 !important;
+  background: #FFFFFF !important;
+  font-weight: 600 !important;
+}
+[data-mode="dark"] .erd-layer svg.erDiagram .edgeLabel,
+[data-mode="dark"] .erd-layer svg.erDiagram .edgeLabel .label,
+[data-mode="dark"] .erd-layer svg.erDiagram .edgeLabel .nodeLabel {
+  color: #E2E8F0 !important;
+  fill: #E2E8F0 !important;
+}
+[data-mode="dark"] .erd-layer svg.erDiagram .edgeLabel rect,
+[data-mode="dark"] .erd-layer svg.erDiagram .edgeLabel foreignObject div,
+[data-mode="dark"] .erd-layer svg.erDiagram .edgeLabel foreignObject span {
+  background: #1E293B !important;
+}
+[data-mode="dark"] .erd-layer svg.erDiagram .nodeLabel { fill: #F8FAFC !important; }
+
+.erd-layer svg.erDiagram .fk-link { cursor: pointer; }
+.erd-layer svg.erDiagram .fk-link .nodeLabel { text-decoration: underline; text-underline-offset: 2px; }
+.erd-layer svg.erDiagram .fk-link:hover .nodeLabel { font-weight: 700; }
+.erd-layer svg.erDiagram .fk-target-flash .outer-path > rect,
+.erd-layer svg.erDiagram .fk-target-flash .outer-path > path { filter: drop-shadow(0 0 7px currentColor); }
+.erd-layer svg.erDiagram .fk-id-flash .nodeLabel { font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+.erd-layer svg.erDiagram .pk-link { cursor: pointer; }
+.erd-layer svg.erDiagram .pk-link .nodeLabel { text-decoration: underline; text-underline-offset: 2px; text-decoration-style: dotted; }
+.erd-layer svg.erDiagram .pk-link:hover .nodeLabel { font-weight: 700; }
+
+#zoom-controls { flex: 0 0 auto; display: flex; justify-content: center; align-items: center; gap: 8px; padding: 12px 0 0; user-select: none; -webkit-user-select: none; }
+#zoom-controls button {
+  min-width: 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  border: 0.5px solid var(--border, var(--fb-border));
+  background: var(--surface-2, var(--fb-surface2));
+  color: var(--text-primary, var(--fb-text));
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans, sans-serif);
+  user-select: none;
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, transform 0.15s ease;
+}
+#zoom-controls button:hover { border-color: var(--fb-text-sec); }
+#zoom-controls button { transition: transform .15s ease, background-color .25s ease, color .25s ease, border-color .25s ease; }
+#zoom-controls button:active { transform: scale(0.94); }
+#theme-toggle { margin-left: 4px; }
+#theme-toggle .sun, [data-mode="dark"] #theme-toggle .moon { display: none; }
+[data-mode="dark"] #theme-toggle .sun { display: block; }
+[data-mode="light"] #theme-toggle .moon { display: block; }
+#zoom-controls button svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#zoom-controls #view-toggle,
+#zoom-controls #db-schema-toggle {
+  width: auto;
+  min-width: 100px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+}
+#zoom-controls #db-schema-toggle[disabled] { opacity: 0.6; cursor: default; }
+#zoom-controls #db-schema-toggle.live-active { border-color: #5146B8; color: #5146B8; }
+[data-mode="dark"] #zoom-controls #db-schema-toggle.live-active { border-color: #A29AFF; color: #A29AFF; }
+#zoom-label { font-size: 13px; color: var(--text-secondary, var(--fb-text-sec)); min-width: 44px; text-align: center; font-family: var(--font-sans, sans-serif); transition: color 0.3s ease; }
+#hint { flex: 0 0 auto; font-size: 12px; color: var(--text-secondary, var(--fb-text-sec)); text-align: center; padding-top: 4px; font-family: var(--font-sans, sans-serif); user-select: none; -webkit-user-select: none; transition: color 0.3s ease; }
+
+.reverse-menu {
+  position: fixed;
+  background: var(--surface-2, var(--fb-surface2));
+  border: 0.5px solid var(--border, var(--fb-border));
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  z-index: 1000;
+  min-width: 220px;
+  max-height: 280px;
+  overflow-y: auto;
+  font-family: var(--font-sans, sans-serif);
+  font-size: 13px;
+  color: var(--text-primary, var(--fb-text));
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+.reverse-menu-header {
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary, var(--fb-text-sec));
+  border-bottom: 0.5px solid var(--border, var(--fb-border));
+}
+.reverse-menu-item {
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: background 0.12s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.reverse-menu-item:hover { background: var(--surface-1, var(--fb-surface1)); }
+.reverse-menu-empty { color: var(--text-secondary, var(--fb-text-sec)); font-style: italic; cursor: default; }
+.reverse-menu-item code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  background: rgba(127,119,221,0.12);
+  padding: 1px 4px;
+  border-radius: 4px;
+  color: #4C3FB5;
+}
+@media (prefers-color-scheme: dark) {
+  .reverse-menu-item code { color: #A29AFF; background: rgba(162,154,255,0.12); }
+}
+[data-mode="dark"] .reverse-menu-item code { color: #A29AFF; background: rgba(162,154,255,0.12); }
+</style>
+</head>
+<body>
+<h2 class="sr-only">ERD of the workflow spine: categories, workflows, editions, steps, step editions, instances, and step instances, centered and fit to view, with wheel zoom, drag panning, and a 0 key/button to re-fit</h2>
+
+<div id="erd-wrap">
+  <div id="erd-viewport" tabindex="0">
+    <div id="erd-inner">
+      <div id="erd-workflow" class="erd-layer active" data-view="workflow"></div>
+      <div id="erd-form" class="erd-layer" data-view="form"></div>
+      <div id="erd-live" class="erd-layer" data-view="live"></div>
+    </div>
+  </div>
+
+  <div id="zoom-controls" role="group" aria-label="Diagram zoom controls">
+    <button id="view-toggle" type="button" aria-label="Toggle view" title="Switch to Form view">
+      <span>Forms</span>
+    </button>
+    <button id="db-schema-toggle" type="button" aria-label="Load schema from database" title="Introspect the live Postgres database configured in .env">
+      <span>Load DB Schema</span>
+    </button>
+    <button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg>
+    </button>
+    <span id="zoom-label" aria-live="polite">100%</span>
+    <button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg>
+    </button>
+    <button id="zoom-fit" type="button" aria-label="Fit and center" title="Fit and center">
+      <svg viewBox="0 0 24 24" aria-hidden="true" style="width:18px;height:18px;"><path d="M4 10V6a2 2 0 0 1 2-2h4M4 14v4a2 2 0 0 0 2 2h4M20 10V6a2 2 0 0 0-2-2h-4M20 14v4a2 2 0 0 1-2 2h-4"/></svg>
+    </button>
+    <button id="theme-toggle" type="button" aria-label="Switch color theme" title="Switch to dark mode">
+      <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2Z"/></svg>
+      <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></svg>
+    </button>
+  </div>
+
+  <div id="hint">scroll to zoom · drag to pan · click an <strong>id</strong> for reverse relations · press 0 to fit &amp; center</div>
+</div>
+
+<script src="data.js"></script>
+<script type="module">
+import mermaid from 'https://esm.sh/mermaid@11/dist/mermaid.esm.min.mjs';
+
+/* ---------- Theme bootstrap ---------- */
+
+const systemDark = matchMedia('(prefers-color-scheme: dark)');
+const savedMode = localStorage.getItem('erd-theme');
+if (savedMode === 'dark' || savedMode === 'light') {
+  document.documentElement.dataset.mode = savedMode;
+} else {
+  document.documentElement.dataset.mode = systemDark.matches ? 'dark' : 'light';
+}
+await document.fonts.ready;
+
+let dark, headerBg, headerText, rowBg, rowText;
+
+function configureMermaid() {
+  dark = document.documentElement.dataset.mode === 'dark';
+  headerBg = dark ? '#4F46B5' : '#5146B8';
+  headerText = '#FFFFFF';
+  rowBg = dark ? '#1E293B' : '#F8FAFC';
+  rowText = dark ? '#F8FAFC' : '#111827';
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    fontFamily: 'sans-serif',
+    themeVariables: {
+      darkMode: dark,
+      fontSize: '14px',
+      fontFamily: 'sans-serif',
+      lineColor: dark ? '#94A3B8' : '#64748B',
+      textColor: rowText,
+      primaryColor: headerBg,
+      primaryTextColor: headerText,
+      primaryBorderColor: dark ? '#818CF8' : '#4338CA',
+      attributeBackgroundColorOdd: rowBg,
+      attributeBackgroundColorEven: rowBg,
+      attributeTextColor: rowText,
+      edgeLabelBackground: dark ? '#1E293B' : '#FFFFFF',
+    },
+  });
+}
+configureMermaid();
+
+/* ---------- Diagram definitions ----------
+   The Mermaid erDiagram definitions and the fkTargets map used below
+   (data.workflowDiagram, data.formDiagram, data.fkTargets) live in
+   data.js, loaded via a classic <script> tag above this module. See
+   data.js to point this viewer at a different schema.
+
+   viewDefs holds one { diagram, fkTargets } entry per toggleable view.
+   'workflow' and 'form' come from data.js at load time; a 'live' entry
+   is added on demand when the "Load DB Schema" button successfully
+   fetches GET /api/schema (see the db-schema-toggle handler below). */
+const viewDefs = {
+  workflow: { diagram: data.workflowDiagram, fkTargets: data.fkTargets },
+  form: { diagram: data.formDiagram, fkTargets: data.fkTargets },
+};
+
+/* ---------- Helpers ---------- */
+
+function activeLayer() { return document.querySelector('.erd-layer.active'); }
+function layerFor(view) { return document.getElementById(`erd-${view}`); }
+function nodeTableName(node) {
+  return node.querySelector('.label.name .nodeLabel')?.textContent?.trim() || '';
+}
+
+function findTableNode(tableName, layer = activeLayer()) {
+  return [...(layer?.querySelectorAll('svg.erDiagram .node') || [])]
+    .find(node => nodeTableName(node) === tableName) || null;
+}
+
+function centerTableNode(node, smooth = false) {
+  const viewport = document.getElementById('erd-viewport');
+  const viewportRect = viewport.getBoundingClientRect();
+  const nodeRect = node.getBoundingClientRect();
+  const viewportCenterX = viewportRect.left + viewportRect.width / 2;
+  const viewportCenterY = viewportRect.top + viewportRect.height / 2;
+  const nodeCenterX = nodeRect.left + nodeRect.width / 2;
+  const nodeCenterY = nodeRect.top + nodeRect.height / 2;
+  panX += viewportCenterX - nodeCenterX;
+  panY += viewportCenterY - nodeCenterY;
+  applyTransform(smooth);
+
+  document.querySelectorAll('.fk-target-flash, .fk-id-flash').forEach(el => {
+    el.classList.remove('fk-target-flash', 'fk-id-flash');
+  });
+  node.classList.add('fk-target-flash');
+  const idName = [...node.querySelectorAll('.label.attribute-name')]
+    .find(el => el.textContent.trim() === 'id');
+  const idKey = [...node.querySelectorAll('.label.attribute-keys')]
+    .find(el => el.textContent.trim().includes('PK'));
+  idName?.classList.add('fk-id-flash');
+  idKey?.classList.add('fk-id-flash');
+
+  clearTimeout(centerTableNode._flashTimer);
+  centerTableNode._flashTimer = setTimeout(() => {
+    node.classList.remove('fk-target-flash');
+    idName?.classList.remove('fk-id-flash');
+    idKey?.classList.remove('fk-id-flash');
+  }, 1200);
+}
+
+function postProcessSvg(layer) {
+  const renderedSvg = layer.querySelector('svg.erDiagram');
+  if (renderedSvg?.viewBox?.baseVal) {
+    const vb = renderedSvg.viewBox.baseVal;
+    renderedSvg.setAttribute('width', vb.width);
+    renderedSvg.setAttribute('height', vb.height);
+    renderedSvg.style.width = `${vb.width}px`;
+    renderedSvg.style.height = `${vb.height}px`;
+    renderedSvg.style.maxWidth = 'none';
+  }
+
+  // 1. Fix entity header background color
+  if (dark) {
+    layer.querySelectorAll('svg.erDiagram .node').forEach(node => {
+      const firstPath = node.querySelector('path[d]');
+      if (!firstPath) return;
+      const d = firstPath.getAttribute('d');
+      const nums = d.match(/-?[\d.]+/g)?.map(Number);
+      if (!nums || nums.length < 8) return;
+      const xs = [nums[0], nums[2], nums[4], nums[6]];
+      const ys = [nums[1], nums[3], nums[5], nums[7]];
+      const x = Math.min(...xs), y = Math.min(...ys);
+      const w = Math.max(...xs) - x, h = Math.max(...ys) - y;
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', x); rect.setAttribute('y', y);
+      rect.setAttribute('width', w); rect.setAttribute('height', h);
+      rect.setAttribute('rx', '8');
+      for (const a of ['fill', 'stroke', 'stroke-width', 'class', 'style']) {
+        if (firstPath.hasAttribute(a)) rect.setAttribute(a, firstPath.getAttribute(a));
+      }
+      firstPath.replaceWith(rect);
+    });
+  }
+
+  layer.querySelectorAll('svg.erDiagram .er.entityBox > rect, svg.erDiagram .er.entityBox > path, svg.erDiagram .node > rect:first-child, svg.erDiagram .node > path:first-child').forEach(shape => {
+    shape.setAttribute('fill', headerBg);
+    shape.style.setProperty('fill', headerBg, 'important');
+  });
+
+  // 2. Fix background colors for attribute rows
+  layer.querySelectorAll('svg.erDiagram .er.attributeBoxOdd, svg.erDiagram .er.attributeBoxEven, svg.erDiagram .row-rect-odd, svg.erDiagram .row-rect-even').forEach(g => {
+    g.querySelectorAll('path, rect').forEach(shape => {
+      shape.setAttribute('fill', rowBg);
+      shape.style.setProperty('fill', rowBg, 'important');
+    });
+  });
+
+  // 3. Fix text colors for ALL text and tspan elements
+  layer.querySelectorAll('svg.erDiagram text, svg.erDiagram tspan').forEach(t => {
+    const cls = t.getAttribute('class') || '';
+    if (cls.includes('entityLabel')) {
+      t.setAttribute('fill', headerText);
+      t.style.setProperty('fill', headerText, 'important');
+    } else {
+      t.setAttribute('fill', rowText);
+      t.style.setProperty('fill', rowText, 'important');
+    }
+  });
+
+  // 4. Edge label fixes
+  layer.querySelectorAll('svg.erDiagram .edgeLabel').forEach(label => {
+    label.querySelectorAll('text, tspan, .nodeLabel').forEach(el => {
+      el.setAttribute('fill', dark ? '#E2E8F0' : '#334155');
+      el.style.setProperty('fill', dark ? '#E2E8F0' : '#334155', 'important');
+      el.style.setProperty('color', dark ? '#E2E8F0' : '#334155', 'important');
+    });
+    label.querySelectorAll('rect').forEach(el => {
+      el.setAttribute('fill', dark ? '#1E293B' : '#FFFFFF');
+      el.style.setProperty('fill', dark ? '#1E293B' : '#FFFFFF', 'important');
+    });
+    label.querySelectorAll('foreignObject div, foreignObject span').forEach(el => {
+      el.style.setProperty('color', dark ? '#E2E8F0' : '#334155', 'important');
+      el.style.setProperty('background', dark ? '#1E293B' : '#FFFFFF', 'important');
+    });
+  });
+}
+
+function wireForeignKeys(layer, view) {
+  const fkTargets = viewDefs[view]?.fkTargets || {};
+  layer.querySelectorAll('svg.erDiagram .node').forEach(node => {
+    const names = [...node.querySelectorAll('.label.attribute-name')];
+    const keys = [...node.querySelectorAll('.label.attribute-keys')];
+    names.forEach((nameEl, index) => {
+      const fieldName = nameEl.textContent.trim();
+      const keyEl = keys[index];
+      if (!keyEl || !keyEl.textContent.includes('FK')) return;
+      const targetTable = fkTargets[fieldName];
+      if (!targetTable || !findTableNode(targetTable, layer)) return;
+
+      [nameEl, keyEl].forEach(el => {
+        el.classList.add('fk-link');
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('role', 'link');
+        el.setAttribute('aria-label', `${fieldName} references ${targetTable}.id`);
+      });
+
+      const navigate = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const target = findTableNode(targetTable, layer);
+        if (target) centerTableNode(target);
+      };
+
+      [nameEl, keyEl].forEach(el => {
+        el.addEventListener('pointerdown', event => event.stopPropagation());
+        el.addEventListener('click', navigate);
+        el.addEventListener('keydown', event => {
+          if (event.key === 'Enter' || event.key === ' ') navigate(event);
+        });
+      });
+    });
+  });
+}
+
+function closeReverseMenu() {
+  const existing = document.getElementById('reverse-menu');
+  if (existing) existing.remove();
+}
+
+function showReverseMenu(event, tableName, fkTargets) {
+  closeReverseMenu();
+  const refs = [];
+  activeLayer()?.querySelectorAll('svg.erDiagram .node').forEach(node => {
+    const otherTable = nodeTableName(node);
+    if (otherTable === tableName) return;
+    const names = [...node.querySelectorAll('.label.attribute-name')];
+    const keys = [...node.querySelectorAll('.label.attribute-keys')];
+    names.forEach((nameEl, index) => {
+      const fieldName = nameEl.textContent.trim();
+      const keyEl = keys[index];
+      if (!keyEl || !keyEl.textContent.includes('FK')) return;
+      if (fkTargets[fieldName] === tableName) {
+        refs.push({ table: otherTable, field: fieldName, node, nameEl, keyEl });
+      }
+    });
+  });
+
+  const menu = document.createElement('div');
+  menu.id = 'reverse-menu';
+  menu.className = 'reverse-menu';
+
+  const header = document.createElement('div');
+  header.className = 'reverse-menu-header';
+  header.textContent = `Referenced by ${refs.length} field${refs.length !== 1 ? 's' : ''}`;
+  menu.appendChild(header);
+
+  if (refs.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'reverse-menu-item reverse-menu-empty';
+    empty.textContent = 'No references';
+    menu.appendChild(empty);
+  } else {
+    refs.forEach(ref => {
+      const item = document.createElement('div');
+      item.className = 'reverse-menu-item';
+      item.innerHTML = `<code>${ref.table}</code><span style="opacity:0.7;">.${ref.field}</span>`;
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        centerTableNode(ref.node, true);
+        document.querySelectorAll('.fk-target-flash, .fk-id-flash').forEach(el => {
+          el.classList.remove('fk-target-flash', 'fk-id-flash');
+        });
+        ref.node.classList.add('fk-target-flash');
+        ref.nameEl.classList.add('fk-id-flash');
+        ref.keyEl.classList.add('fk-id-flash');
+        clearTimeout(window._flashTimer);
+        window._flashTimer = setTimeout(() => {
+          ref.node.classList.remove('fk-target-flash');
+          ref.nameEl.classList.remove('fk-id-flash');
+          ref.keyEl.classList.remove('fk-id-flash');
+        }, 1200);
+        closeReverseMenu();
+      });
+      menu.appendChild(item);
+    });
+  }
+
+  document.body.appendChild(menu);
+  const rect = event.target.getBoundingClientRect();
+  let left = rect.left;
+  let top = rect.bottom + 6;
+  const menuRect = menu.getBoundingClientRect();
+  if (left + menuRect.width > window.innerWidth - 12) {
+    left = window.innerWidth - menuRect.width - 12;
+  }
+  if (top + menuRect.height > window.innerHeight - 12) {
+    top = rect.top - menuRect.height - 6;
+  }
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  setTimeout(() => {
+    document.addEventListener('click', closeReverseMenu, { once: true });
+  }, 0);
+}
+
+function wireReverseRelations(layer, view) {
+  const fkTargets = viewDefs[view]?.fkTargets || {};
+  layer.querySelectorAll('svg.erDiagram .node').forEach(node => {
+    const tableName = nodeTableName(node);
+    if (!tableName) return;
+    const names = [...node.querySelectorAll('.label.attribute-name')];
+    const keys = [...node.querySelectorAll('.label.attribute-keys')];
+    names.forEach((nameEl, index) => {
+      const fieldName = nameEl.textContent.trim();
+      const keyEl = keys[index];
+      if (!keyEl || !keyEl.textContent.includes('PK') || fieldName !== 'id') return;
+
+      [nameEl, keyEl].forEach(el => el.classList.add('pk-link'));
+
+      const handleClick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showReverseMenu(e, tableName, fkTargets);
+      };
+
+      [nameEl, keyEl].forEach(el => {
+        el.addEventListener('pointerdown', ev => ev.stopPropagation());
+        el.addEventListener('click', handleClick);
+      });
+    });
+  });
+}
+
+async function renderDiagram(view, definition) {
+  const layer = layerFor(view);
+  const { svg } = await mermaid.render(`erd-svg-${view}-${dark ? 'dark' : 'light'}-${Date.now()}`, definition);
+  layer.innerHTML = svg;
+  postProcessSvg(layer);
+  wireForeignKeys(layer, view);
+  wireReverseRelations(layer, view);
+}
+
+async function renderBothDiagrams() {
+  await renderDiagram('workflow', viewDefs.workflow.diagram);
+  await renderDiagram('form', viewDefs.form.diagram);
+}
+
+/* ---------- View switching ---------- */
+
+let currentView = 'workflow';
+let switchingView = false;
+const toggleBtn = document.getElementById('view-toggle');
+
+function updateViewButton() {
+  toggleBtn.innerHTML = currentView === 'workflow' ? '<span>Forms</span>' : '<span>Workflow</span>';
+  toggleBtn.title = currentView === 'workflow' ? 'Switch to Form view' : 'Switch to Workflow view';
+}
+
+function switchView(nextView) {
+  if (switchingView || nextView === currentView) return;
+  switchingView = true;
+  closeReverseMenu();
+  const from = layerFor(currentView);
+  const to = layerFor(nextView);
+  currentView = nextView;
+  updateViewButton();
+
+  // Keep both SVGs mounted. Fit the incoming one while transparent, then cross-fade.
+  to.classList.add('entering');
+  fitToView(false, to);
+  requestAnimationFrame(() => {
+    from.classList.remove('active');
+    from.classList.add('leaving');
+    to.classList.add('active');
+    to.classList.remove('entering');
+    setTimeout(() => {
+      from.classList.remove('leaving');
+      switchingView = false;
+    }, 300);
+  });
+}
+
+toggleBtn.addEventListener('click', () => {
+  switchView(currentView === 'workflow' ? 'form' : 'workflow');
+});
+
+/* ---------- Theme toggle ---------- */
+
+const themeBtn = document.getElementById('theme-toggle');
+let switchingTheme = false;
+
+function updateThemeButton() {
+  const isDark = document.documentElement.dataset.mode === 'dark';
+  themeBtn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+  themeBtn.setAttribute('aria-label', themeBtn.title);
+}
+
+themeBtn.addEventListener('click', async () => {
+  // Guard against rapid repeat clicks stacking up overlapping re-renders,
+  // which was another source of the perceived lag.
+  if (switchingTheme) return;
+  switchingTheme = true;
+  themeBtn.disabled = true;
+
+  const nextMode = document.documentElement.dataset.mode === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.mode = nextMode;
+  localStorage.setItem('erd-theme', nextMode);
+  updateThemeButton();
+  configureMermaid();
+  closeReverseMenu();
+
+  const viewport = document.getElementById('erd-viewport');
+  viewport.style.opacity = '.82';
+  await renderBothDiagrams();
+  if (viewDefs.live) await renderDiagram('live', viewDefs.live.diagram);
+  // Re-render replaces each layer's SVG from scratch, which loses the
+  // inline transform — reapply the pan/zoom the user already had instead
+  // of fitting to view, so a theme flip doesn't reset their position.
+  document.querySelectorAll('.erd-layer').forEach(layer => applyTransform(false, layer));
+  requestAnimationFrame(() => { viewport.style.opacity = '1'; });
+
+  themeBtn.disabled = false;
+  switchingTheme = false;
+});
+
+/* ---------- Load schema from a live Postgres database ----------
+   Hits GET /api/schema (see server.js / lib/schema.js), which
+   introspects the database configured in .env and returns the same
+   { diagram, fkTargets } shape as data.js. On success this adds a
+   'live' entry to viewDefs, mounts it into the pre-existing #erd-live
+   layer, and switches to it — reusing the exact same renderDiagram /
+   pan-zoom / FK-navigation code path as the static views above. */
+
+const dbBtn = document.getElementById('db-schema-toggle');
+let viewBeforeLive = null;
+
+async function loadLiveSchema() {
+  dbBtn.disabled = true;
+  dbBtn.querySelector('span').textContent = 'Loading…';
+  try {
+    const res = await fetch('/api/schema');
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || body.error || `HTTP ${res.status}`);
+
+    viewDefs.live = { diagram: body.diagram, fkTargets: body.fkTargets };
+    await renderDiagram('live', body.diagram);
+
+    viewBeforeLive = currentView;
+    switchView('live');
+    dbBtn.classList.add('live-active');
+    dbBtn.querySelector('span').textContent = `Live DB (${body.tableCount} tables)`;
+    dbBtn.title = 'Click again to return to the static diagram';
+  } catch (err) {
+    dbBtn.querySelector('span').textContent = 'Load DB Schema';
+    alert(`Could not load schema from the database:\n${err.message}\n\nCheck .env and that Postgres is running.`);
+  } finally {
+    dbBtn.disabled = false;
+  }
+}
+
+dbBtn.addEventListener('click', () => {
+  if (!viewDefs.live) {
+    loadLiveSchema();
+  } else if (currentView === 'live') {
+    switchView(viewBeforeLive || 'workflow');
+    dbBtn.classList.remove('live-active');
+    dbBtn.querySelector('span').textContent = 'Back to Live DB';
+  } else {
+    viewBeforeLive = currentView;
+    switchView('live');
+    dbBtn.classList.add('live-active');
+    dbBtn.querySelector('span').textContent = 'Back to Diagram';
+  }
+});
+
+/* ---------- Boot ---------- */
+
+updateThemeButton();
+await renderBothDiagrams();
+initPanZoom();
+requestAnimationFrame(() => requestAnimationFrame(() => fitToView(false)));
+</script>
+
+<script>
+let zoomLevel = 1;
+let panX = 0;
+let panY = 0;
+
+function applyTransform(smooth = false, erd = document.querySelector('.erd-layer.active')) {
+  if (!erd) return;
+  erd.style.transition = smooth
+    ? 'transform 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity .28s ease, filter .28s ease'
+    : 'transform 0s, opacity .28s ease, filter .28s ease';
+  erd.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+  document.getElementById('zoom-label').textContent = Math.round(zoomLevel * 100) + '%';
+}
+
+function zoomBy(delta) {
+  const viewport = document.getElementById('erd-viewport');
+  const rect = viewport.getBoundingClientRect();
+  zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, delta);
+}
+
+function zoomAt(clientX, clientY, delta) {
+  const viewport = document.getElementById('erd-viewport');
+  const rect = viewport.getBoundingClientRect();
+  const px = clientX - rect.left;
+  const py = clientY - rect.top;
+  const oldZoom = zoomLevel;
+  const newZoom = Math.min(3, Math.max(0.1, +(zoomLevel + delta).toFixed(2)));
+  const scaleRatio = newZoom / oldZoom;
+  panX = px - (px - panX) * scaleRatio;
+  panY = py - (py - panY) * scaleRatio;
+  zoomLevel = newZoom;
+  applyTransform(false);
+}
+
+function fitToView(smooth = false, layer = document.querySelector('.erd-layer.active')) {
+  const viewport = document.getElementById('erd-viewport');
+  const svgEl = layer?.querySelector('svg.erDiagram');
+  if (!svgEl) return;
+  const vw = viewport.clientWidth;
+  const vh = viewport.clientHeight;
+  const bbox = svgEl.getBBox();
+  const pad = 32;
+  if (!bbox.width || !bbox.height || !vw || !vh) return;
+  const availableW = Math.max(1, vw - pad * 2);
+  const availableH = Math.max(1, vh - pad * 2);
+  zoomLevel = Math.max(0.1, Math.min(availableW / bbox.width, availableH / bbox.height, 1.5));
+  const contentCenterX = bbox.x + bbox.width / 2;
+  const contentCenterY = bbox.y + bbox.height / 2;
+  panX = vw / 2 - contentCenterX * zoomLevel;
+  panY = vh / 2 - contentCenterY * zoomLevel;
+  applyTransform(smooth, layer);
+}
+
+function initPanZoom() {
+  const viewport = document.getElementById('erd-viewport');
+
+  document.getElementById('zoom-out').addEventListener('click', () => zoomBy(-0.15));
+  document.getElementById('zoom-in').addEventListener('click', () => zoomBy(0.15));
+  document.getElementById('zoom-fit').addEventListener('click', () => fitToView(true));
+
+  viewport.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.1 : -0.1;
+    zoomAt(e.clientX, e.clientY, delta);
+  }, { passive: false });
+
+  /* Pointer Events fire independently per finger, so a single set of
+     handlers can drive both one-finger drag (mouse or touch) and
+     two-finger pinch-to-zoom (touch) just by tracking how many pointers
+     are currently down. */
+  const activePointers = new Map(); // pointerId -> {x, y}
+  let dragAnchor = null;   // { startX, startY, startPanX, startPanY }
+  let pinchAnchor = null;  // { startDist, startZoom, contentX, contentY }
+
+  const pointFrom = (e) => ({ x: e.clientX, y: e.clientY });
+  const distanceBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const midpointOf = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+  function beginDrag(point) {
+    pinchAnchor = null;
+    dragAnchor = { startX: point.x, startY: point.y, startPanX: panX, startPanY: panY };
+    viewport.classList.add('grabbing');
+  }
+
+  function beginPinch() {
+    const [p1, p2] = [...activePointers.values()];
+    const rect = viewport.getBoundingClientRect();
+    const mid = midpointOf(p1, p2);
+    dragAnchor = null;
+    pinchAnchor = {
+      startDist: distanceBetween(p1, p2) || 1,
+      startZoom: zoomLevel,
+      // Content-space point currently sitting under the pinch midpoint,
+      // kept fixed under the fingers as the pinch progresses.
+      contentX: (mid.x - rect.left - panX) / zoomLevel,
+      contentY: (mid.y - rect.top - panY) / zoomLevel,
+    };
+    viewport.classList.remove('grabbing');
+  }
+
+  function endPointerTracking() {
+    dragAnchor = null;
+    pinchAnchor = null;
+    viewport.classList.remove('grabbing');
+  }
+
+  viewport.addEventListener('pointerdown', (e) => {
+    viewport.setPointerCapture(e.pointerId);
+    activePointers.set(e.pointerId, pointFrom(e));
+
+    if (activePointers.size === 1) {
+      beginDrag(pointFrom(e));
+    } else if (activePointers.size === 2) {
+      beginPinch();
+    }
+    // 3+ simultaneous touches: ignore, keep tracking the existing pinch/drag.
+  });
+
+  viewport.addEventListener('pointermove', (e) => {
+    if (!activePointers.has(e.pointerId)) return;
+    activePointers.set(e.pointerId, pointFrom(e));
+
+    if (activePointers.size >= 2 && pinchAnchor) {
+      const [p1, p2] = [...activePointers.values()];
+      const rect = viewport.getBoundingClientRect();
+      const mid = midpointOf(p1, p2);
+      const scale = distanceBetween(p1, p2) / pinchAnchor.startDist;
+      zoomLevel = Math.min(3, Math.max(0.1, +(pinchAnchor.startZoom * scale).toFixed(3)));
+      panX = (mid.x - rect.left) - pinchAnchor.contentX * zoomLevel;
+      panY = (mid.y - rect.top) - pinchAnchor.contentY * zoomLevel;
+      applyTransform(false);
+    } else if (dragAnchor) {
+      panX = dragAnchor.startPanX + (e.clientX - dragAnchor.startX);
+      panY = dragAnchor.startPanY + (e.clientY - dragAnchor.startY);
+      applyTransform(false);
+    }
+  });
+
+  function releasePointer(e) {
+    if (!activePointers.has(e.pointerId)) return;
+    activePointers.delete(e.pointerId);
+    try { viewport.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+
+    if (activePointers.size === 2) {
+      beginPinch(); // dropped from 3+ fingers back to a clean pinch
+    } else if (activePointers.size === 1) {
+      beginDrag([...activePointers.values()][0]); // pinch/extra finger lifted, resume single-finger drag without a jump
+    } else {
+      endPointerTracking();
+    }
+  }
+
+  viewport.addEventListener('pointerup', releasePointer);
+  viewport.addEventListener('pointercancel', releasePointer);
+  viewport.addEventListener('pointerleave', (e) => {
+    // Real touches send pointerup/pointercancel on release; pointerleave
+    // here is a mouse-only signal that the button was released off-viewport.
+    if (e.pointerType === 'mouse') releasePointer(e);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    const target = e.target;
+    const typing = target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      target?.isContentEditable;
+    if (typing) return;
+
+    const zoomInKey = e.key === '+' || e.code === 'NumpadAdd' || (e.key === '=' && !e.ctrlKey && !e.metaKey);
+    const zoomOutKey = e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract';
+
+    if (zoomInKey) {
+      e.preventDefault();
+      zoomBy(0.15);
+    } else if (zoomOutKey) {
+      e.preventDefault();
+      zoomBy(-0.15);
+    } else if (e.key === '0' || e.code === 'Numpad0') {
+      e.preventDefault();
+      fitToView(true);
+    }
+  });
+
+  requestAnimationFrame(() => requestAnimationFrame(() => fitToView(true)));
+  window.addEventListener('resize', () => fitToView(true));
+}
+</script>
+</body>
+</html>

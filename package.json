@@ -1,0 +1,17 @@
+{
+  "name": "erd-viewer",
+  "version": "1.0.0",
+  "description": "Interactive Mermaid ER diagram viewer with pan/zoom, FK navigation, and light/dark themes. Graph data lives in public/data.js.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "pg": "^8.12.0"
+  },
+  "license": "MIT"
+}
