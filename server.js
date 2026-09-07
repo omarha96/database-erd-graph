@@ -23,7 +23,7 @@ const path = require('path');
 const { Pool } = require('pg');
 const { fetchSchema } = require('./lib/schema');
 
-const PORT = process.env.PORT || 4400;
+const PORT = process.env.PORT || 4440;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 // Pools are cached per-database name, since Postgres connections are

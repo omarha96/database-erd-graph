@@ -182,7 +182,85 @@ button { color: var(--fb-text); }
 .erd-layer svg.erDiagram .pk-link .nodeLabel { text-decoration: underline; text-underline-offset: 2px; text-decoration-style: dotted; }
 .erd-layer svg.erDiagram .pk-link:hover .nodeLabel { font-weight: 700; }
 
-#zoom-controls { flex: 0 0 auto; display: flex; justify-content: center; align-items: center; gap: 8px; padding: 12px 0 0; user-select: none; -webkit-user-select: none; }
+#zoom-controls { flex: 0 0 auto; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; padding: 12px 0 0; user-select: none; -webkit-user-select: none; }
+.tool-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+}
+.tool-group:first-child { padding-left: 0; }
+.tool-group:last-child { padding-right: 0; }
+.tool-group + .tool-group {
+  border-left: 2px solid var(--fb-text);
+}
+
+/* Full-screen loading overlay shown while a live schema is being fetched. */
+#loading-overlay[hidden] { display: none; }
+#loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--fb-surface2) 72%, transparent);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+#loading-overlay .loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 28px 40px;
+  border-radius: 14px;
+  background: var(--surface-2, var(--fb-surface2));
+  border: 0.5px solid var(--border, var(--fb-border));
+  box-shadow: 0 12px 40px rgba(0,0,0,0.22);
+  font-family: var(--font-sans, sans-serif);
+  color: var(--fb-text);
+}
+#loading-overlay .loading-text { font-size: 13px; font-weight: 600; color: var(--text-secondary, var(--fb-text-sec)); }
+#loading-overlay .loading-spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid var(--border, var(--fb-border));
+  border-top-color: #5146B8;
+  animation: erd-spin 0.8s linear infinite;
+}
+[data-mode="dark"] #loading-overlay .loading-spinner { border-top-color: #A29AFF; }
+@keyframes erd-spin { to { transform: rotate(360deg); } }
+
+/* "This is not real data" banner over the placeholder diagram. */
+#placeholder-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  max-width: calc(100% - 24px);
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: #5146B8;
+  color: #FFFFFF;
+  font-family: var(--font-sans, sans-serif);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+  pointer-events: none;
+}
+[data-mode="dark"] #placeholder-banner { background: #4F46B5; }
+#erd-wrap[data-view-mode="live"] #placeholder-banner { display: none; }
+#erd-wrap[data-view-mode="live"] #erd-viewport {
+  outline: none;
+}
+#erd-wrap[data-view-mode="placeholder"] #erd-viewport {
+  border-style: dashed;
+  border-width: 1px;
+}
 #zoom-controls button {
   min-width: 36px;
   width: 36px;
@@ -219,8 +297,6 @@ button { color: var(--fb-text); }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-#zoom-controls #view-toggle,
-#zoom-controls #db-schema-toggle,
 #zoom-controls #group-toggle {
   width: auto;
   min-width: 100px;
@@ -229,10 +305,7 @@ button { color: var(--fb-text); }
   font-weight: 600;
   gap: 6px;
 }
-#zoom-controls #db-schema-toggle[disabled],
 #zoom-controls #group-toggle[disabled] { opacity: 0.6; cursor: default; }
-#zoom-controls #db-schema-toggle.live-active { border-color: #5146B8; color: #5146B8; }
-[data-mode="dark"] #zoom-controls #db-schema-toggle.live-active { border-color: #A29AFF; color: #A29AFF; }
 #zoom-controls #group-toggle.groups-active { border-color: #5146B8; color: #5146B8; }
 [data-mode="dark"] #zoom-controls #group-toggle.groups-active { border-color: #A29AFF; color: #A29AFF; }
 
@@ -349,47 +422,61 @@ button { color: var(--fb-text); }
 </style>
 </head>
 <body>
-<h2 class="sr-only">ERD of the workflow spine: categories, workflows, editions, steps, step editions, instances, and step instances, centered and fit to view, with wheel zoom, drag panning, and a 0 key/button to re-fit</h2>
+<h2 class="sr-only">Database ERD viewer: select a Postgres database to introspect its schema, centered and fit to view, with wheel zoom, drag panning, and a 0 key/button to re-fit. Until a database is selected an obviously-fake sample schema is shown.</h2>
 
-<div id="erd-wrap">
+<div id="erd-wrap" data-view-mode="placeholder">
   <div id="erd-viewport" tabindex="0">
     <div id="erd-inner">
-      <div id="erd-workflow" class="erd-layer active" data-view="workflow"></div>
-      <div id="erd-form" class="erd-layer" data-view="form"></div>
+      <div id="erd-placeholder" class="erd-layer active" data-view="placeholder"></div>
       <div id="erd-live" class="erd-layer" data-view="live"></div>
+    </div>
+    <div id="placeholder-banner" aria-hidden="false">
+      Sample data — not a real schema. Pick a database below to load your actual tables.
     </div>
   </div>
 
-  <div id="zoom-controls" role="group" aria-label="Diagram zoom controls">
-    <button id="view-toggle" type="button" aria-label="Toggle view" title="Switch to Form view">
-      <span>Forms</span>
-    </button>
-    <select id="database-select" aria-label="Select Postgres database" title="Choose which Postgres database to introspect">
-      <option value="">Database…</option>
-    </select>
-    <button id="db-schema-toggle" type="button" aria-label="Load schema from database" title="Introspect the selected Postgres database" disabled>
-      <span>Load DB Schema</span>
-    </button>
-    <button id="group-toggle" type="button" aria-label="Group tables by connectivity" title="Group tables by how connected they are">
-      <span>Group Tables</span>
-    </button>
-    <button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg>
-    </button>
-    <span id="zoom-label" aria-live="polite">100%</span>
-    <button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg>
-    </button>
-    <button id="zoom-fit" type="button" aria-label="Fit and center" title="Fit and center">
-      <svg viewBox="0 0 24 24" aria-hidden="true" style="width:18px;height:18px;"><path d="M4 10V6a2 2 0 0 1 2-2h4M4 14v4a2 2 0 0 0 2 2h4M20 10V6a2 2 0 0 0-2-2h-4M20 14v4a2 2 0 0 1-2 2h-4"/></svg>
-    </button>
-    <button id="theme-toggle" type="button" aria-label="Switch color theme" title="Switch to dark mode">
-      <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2Z"/></svg>
-      <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></svg>
-    </button>
+  <div id="zoom-controls" role="group" aria-label="Diagram controls">
+    <div class="tool-group" role="group" aria-label="Data source">
+      <select id="database-select" aria-label="Select Postgres database" title="Choose which Postgres database to introspect — the schema loads automatically">
+        <option value="">Sample data (no database)</option>
+      </select>
+    </div>
+
+    <div class="tool-group" role="group" aria-label="Layout">
+      <button id="group-toggle" type="button" aria-label="Group tables by connectivity" title="Group tables by how tightly connected they are">
+        <span>Group Tables</span>
+      </button>
+    </div>
+
+    <div class="tool-group" role="group" aria-label="Zoom">
+      <button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg>
+      </button>
+      <span id="zoom-label" aria-live="polite">100%</span>
+      <button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg>
+      </button>
+      <button id="zoom-fit" type="button" aria-label="Fit and center" title="Fit and center">
+        <svg viewBox="0 0 24 24" aria-hidden="true" style="width:18px;height:18px;"><path d="M4 10V6a2 2 0 0 1 2-2h4M4 14v4a2 2 0 0 0 2 2h4M20 10V6a2 2 0 0 0-2-2h-4M20 14v4a2 2 0 0 1-2 2h-4"/></svg>
+      </button>
+    </div>
+
+    <div class="tool-group" role="group" aria-label="Appearance">
+      <button id="theme-toggle" type="button" aria-label="Switch color theme" title="Switch to dark mode">
+        <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2Z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></svg>
+      </button>
+    </div>
   </div>
 
   <div id="hint">scroll to zoom · drag to pan · click an <strong>id</strong> for reverse relations · press 0 to fit &amp; center</div>
+</div>
+
+<div id="loading-overlay" hidden>
+  <div class="loading-card">
+    <div class="loading-spinner" aria-hidden="true"></div>
+    <div class="loading-text">Loading schema…</div>
+  </div>
 </div>
 
 <script src="data.js"></script>
@@ -439,17 +526,16 @@ configureMermaid();
 
 /* ---------- Diagram definitions ----------
    The Mermaid erDiagram definitions and the fkTargets map used below
-   (data.workflowDiagram, data.formDiagram, data.fkTargets) live in
-   data.js, loaded via a classic <script> tag above this module. See
-   data.js to point this viewer at a different schema.
+   (data.placeholderDiagram, data.fkTargets) live in data.js, loaded via
+   a classic <script> tag above this module. See data.js to change the
+   sample schema shown before a database is selected.
 
-   viewDefs holds one { diagram, fkTargets } entry per toggleable view.
-   'workflow' and 'form' come from data.js at load time; a 'live' entry
-   is added on demand when the "Load DB Schema" button successfully
-   fetches GET /api/schema (see the db-schema-toggle handler below). */
+   viewDefs holds one { diagram, fkTargets } entry per view.
+   'placeholder' comes from data.js at load time and is an obviously-fake
+   sample schema; a 'live' entry is added on demand when a database is
+   picked from the dropdown and GET /api/schema succeeds. */
 const viewDefs = {
-  workflow: { diagram: data.workflowDiagram, fkTargets: data.fkTargets },
-  form: { diagram: data.formDiagram, fkTargets: data.fkTargets },
+  placeholder: { diagram: data.placeholderDiagram, fkTargets: data.fkTargets },
 };
 
 /* ---------- Helpers ---------- */
@@ -732,30 +818,29 @@ function currentDiagramFor(view) {
   return groupState[view] ? buildFilteredDiagram(view) : viewDefs[view].diagram;
 }
 
-async function renderBothDiagrams() {
-  await renderDiagram('workflow', currentDiagramFor('workflow'));
-  await renderDiagram('form', currentDiagramFor('form'));
+async function renderActiveDiagrams() {
+  await renderDiagram('placeholder', currentDiagramFor('placeholder'));
+  if (viewDefs.live) await renderDiagram('live', currentDiagramFor('live'));
 }
 
-/* ---------- View switching ---------- */
+/* ---------- View switching (placeholder <-> live) ---------- */
 
-let currentView = 'workflow';
+let currentView = 'placeholder';
 let switchingView = false;
-const toggleBtn = document.getElementById('view-toggle');
 
-function updateViewButton() {
-  toggleBtn.innerHTML = currentView === 'workflow' ? '<span>Forms</span>' : '<span>Workflow</span>';
-  toggleBtn.title = currentView === 'workflow' ? 'Switch to Form view' : 'Switch to Workflow view';
+function updateViewModeAttr() {
+  document.getElementById('erd-wrap').dataset.viewMode = currentView === 'live' ? 'live' : 'placeholder';
 }
 
 function switchView(nextView) {
   if (switchingView || nextView === currentView) return;
+  if (!layerFor(nextView)) return;
   switchingView = true;
   closeReverseMenu();
   const from = layerFor(currentView);
   const to = layerFor(nextView);
   currentView = nextView;
-  updateViewButton();
+  updateViewModeAttr();
 
   // Keep both SVGs mounted. Fit the incoming one while transparent, then cross-fade.
   to.classList.add('entering');
@@ -771,10 +856,6 @@ function switchView(nextView) {
     }, 300);
   });
 }
-
-toggleBtn.addEventListener('click', () => {
-  switchView(currentView === 'workflow' ? 'form' : 'workflow');
-});
 
 /* ---------- Theme toggle ---------- */
 
@@ -803,8 +884,7 @@ themeBtn.addEventListener('click', async () => {
 
   const viewport = document.getElementById('erd-viewport');
   viewport.style.opacity = '.82';
-  await renderBothDiagrams();
-  if (viewDefs.live) await renderDiagram('live', currentDiagramFor('live'));
+  await renderActiveDiagrams();
   // Re-render replaces each layer's SVG from scratch, which loses the
   // inline transform — reapply the pan/zoom the user already had instead
   // of fitting to view, so a theme flip doesn't reset their position.
@@ -816,16 +896,42 @@ themeBtn.addEventListener('click', async () => {
 });
 
 /* ---------- Load schema from a live Postgres database ----------
-   Hits GET /api/schema (see server.js / lib/schema.js), which
-   introspects the database configured in .env and returns the same
-   { diagram, fkTargets } shape as data.js. On success this adds a
-   'live' entry to viewDefs, mounts it into the pre-existing #erd-live
-   layer, and switches to it — reusing the exact same renderDiagram /
-   pan-zoom / FK-navigation code path as the static views above. */
+   Picking a database from the dropdown immediately hits GET /api/schema
+   (see server.js / lib/schema.js), which introspects that database and
+   returns the same { diagram, fkTargets } shape as data.js. While the
+   request is in flight a full-screen overlay blocks the UI and every
+   control is disabled. On success a 'live' entry is added to viewDefs,
+   mounted into #erd-live, and shown — reusing the exact same
+   renderDiagram / pan-zoom / FK-navigation code path as the placeholder.
+   Re-selecting "Sample data (no database)" returns to the placeholder. */
 
-const dbBtn = document.getElementById('db-schema-toggle');
 const dbSelect = document.getElementById('database-select');
-let viewBeforeLive = null;
+const loadingOverlay = document.getElementById('loading-overlay');
+const loadingText = loadingOverlay.querySelector('.loading-text');
+// Every interactive control that must be inert while a schema loads.
+const lockableControls = () => [
+  dbSelect,
+  document.getElementById('group-toggle'),
+  document.getElementById('zoom-out'),
+  document.getElementById('zoom-in'),
+  document.getElementById('zoom-fit'),
+  document.getElementById('theme-toggle'),
+];
+
+function setControlsDisabled(disabled) {
+  lockableControls().forEach((el) => { if (el) el.disabled = disabled; });
+}
+
+function showLoading(message) {
+  loadingText.textContent = message || 'Loading schema…';
+  loadingOverlay.hidden = false;
+  setControlsDisabled(true);
+}
+
+function hideLoading() {
+  loadingOverlay.hidden = true;
+  setControlsDisabled(false);
+}
 
 async function loadDatabaseList() {
   try {
@@ -844,73 +950,68 @@ async function loadDatabaseList() {
   }
 }
 
-dbSelect.addEventListener('change', () => {
-  dbBtn.disabled = !dbSelect.value;
-  // A new database pick invalidates any previously loaded live schema.
-  delete viewDefs.live;
-  if (dbBtn.classList.contains('live-active')) {
-    switchView(viewBeforeLive || 'workflow');
-    dbBtn.classList.remove('live-active');
-  }
-  dbBtn.querySelector('span').textContent = 'Load DB Schema';
-  dbBtn.title = 'Introspect the selected Postgres database';
-});
-
-async function loadLiveSchema() {
-  const databaseName = dbSelect.value;
-  if (!databaseName) return;
-  dbBtn.disabled = true;
-  dbSelect.disabled = true;
-  dbBtn.querySelector('span').textContent = 'Loading…';
+async function loadLiveSchema(databaseName) {
+  showLoading(`Loading schema for "${databaseName}"…`);
+  closeGroupMenu();
+  closeReverseMenu();
   try {
     const res = await fetch(`/api/schema?database=${encodeURIComponent(databaseName)}`);
     const body = await res.json();
     if (!res.ok) throw new Error(body.detail || body.error || `HTTP ${res.status}`);
 
+    resetGroupStateFor('live');
     viewDefs.live = { diagram: body.diagram, fkTargets: body.fkTargets, rawDiagram: body.diagram };
     await renderDiagram('live', body.diagram);
-    resetGroupStateFor('live');
 
-    viewBeforeLive = currentView;
-    switchView('live');
-    dbBtn.classList.add('live-active');
-    dbBtn.querySelector('span').textContent = `Live DB (${body.tableCount} tables)`;
-    dbBtn.title = 'Click again to return to the static diagram';
+    if (currentView === 'live') {
+      fitToView(false, layerFor('live'));
+    } else {
+      switchView('live');
+    }
+    updateViewModeAttr();
   } catch (err) {
-    dbBtn.querySelector('span').textContent = 'Load DB Schema';
+    delete viewDefs.live;
+    if (currentView === 'live') switchView('placeholder');
+    // Reset the dropdown so the failed pick isn't left selected.
+    dbSelect.value = '';
     alert(`Could not load schema from "${databaseName}":\n${err.message}\n\nCheck .env and that Postgres is running.`);
   } finally {
-    dbBtn.disabled = !dbSelect.value;
-    dbSelect.disabled = false;
+    hideLoading();
   }
 }
 
-dbBtn.addEventListener('click', () => {
-  if (!viewDefs.live) {
-    loadLiveSchema();
-  } else if (currentView === 'live') {
-    switchView(viewBeforeLive || 'workflow');
-    dbBtn.classList.remove('live-active');
-    dbBtn.querySelector('span').textContent = 'Back to Live DB';
+function returnToPlaceholder() {
+  delete viewDefs.live;
+  resetGroupStateFor('live');
+  if (currentView === 'live') switchView('placeholder');
+  updateViewModeAttr();
+}
+
+dbSelect.addEventListener('change', () => {
+  if (dbSelect.value) {
+    loadLiveSchema(dbSelect.value);
   } else {
-    viewBeforeLive = currentView;
-    switchView('live');
-    dbBtn.classList.add('live-active');
-    dbBtn.querySelector('span').textContent = 'Back to Diagram';
+    returnToPlaceholder();
   }
 });
 
 /* ---------- Group tables by connectivity ----------
    "Group Tables" parses the active view's raw Mermaid erDiagram
-   definition into tables + relationships, then unions tables that are
-   linked (directly or transitively) by a foreign key into connected
-   components. Each component becomes a checkable "group" in a
-   dropdown; unchecking a group re-renders the same layer using only
-   the tables/relationships from the still-checked groups, reusing the
+   definition into tables + relationships and produces checkable groups:
+
+     - Every table with no foreign-key relationship at all is folded
+       into a SINGLE "Unconnected tables" group.
+     - The remaining, connected tables are split into tightly-connected
+       clusters. We first take connected components, then run label
+       propagation inside each component to find the natural boundaries
+       between sub-clusters (a dependency-free community-detection pass
+       that is deterministic because nodes are visited in sorted order).
+
+   Unchecking a group re-renders the same layer using only the
+   tables/relationships from the still-checked groups, reusing the
    normal renderDiagram() pipeline. */
 
-viewDefs.workflow.rawDiagram = data.workflowDiagram;
-viewDefs.form.rawDiagram = data.formDiagram;
+viewDefs.placeholder.rawDiagram = data.placeholderDiagram;
 
 const groupState = {}; // view -> { groups: [{id, tables: [name,...]}], checked: Set<groupId> }
 
@@ -929,17 +1030,72 @@ function parseDiagram(definition) {
   return { tables, relationships };
 }
 
+/* Greedy modularity maximization (Clauset–Newman–Moore): start with
+   every table in its own community, then repeatedly merge the pair of
+   communities whose merge most increases the graph's modularity, until
+   no merge helps. This is what actually finds the "seams" in a schema —
+   e.g. the boundary between the workflow tables and the form tables even
+   though a couple of foreign keys cross it. Deterministic because the
+   component's nodes arrive in sorted order and ties keep the first pair.
+   `adj` maps table -> Map(neighbourTable -> edgeWeight). */
+function greedyModularityCommunities(comp, adj) {
+  if (comp.length <= 2) return [comp.slice()];
+  const degree = new Map(comp.map((n) => [n, [...adj.get(n).values()].reduce((s, w) => s + w, 0)]));
+  const m2 = comp.reduce((s, n) => s + degree.get(n), 0); // 2m
+  if (m2 === 0) return comp.map((n) => [n]);
+
+  const members = new Map(comp.map((n) => [n, new Set([n])]));
+  const commDegree = new Map(comp.map((n) => [n, degree.get(n)]));
+
+  const edgesBetween = (cA, cB) => {
+    const A = members.get(cA), B = members.get(cB);
+    const [small, big] = A.size < B.size ? [A, B] : [B, A];
+    let w = 0;
+    for (const n of small) for (const [nb, wt] of adj.get(n)) if (big.has(nb)) w += wt;
+    return w;
+  };
+
+  for (;;) {
+    const comms = [...members.keys()];
+    let best = null;
+    for (let i = 0; i < comms.length; i++) {
+      for (let j = i + 1; j < comms.length; j++) {
+        const cA = comms[i], cB = comms[j];
+        const eAB = edgesBetween(cA, cB);
+        if (eAB === 0) continue;
+        const dQ = (2 * eAB) / m2 - (2 * commDegree.get(cA) * commDegree.get(cB)) / (m2 * m2);
+        if (!best || dQ > best.dQ) best = { cA, cB, dQ };
+      }
+    }
+    if (!best || best.dQ <= 1e-12) break;
+    for (const n of members.get(best.cB)) members.get(best.cA).add(n);
+    commDegree.set(best.cA, commDegree.get(best.cA) + commDegree.get(best.cB));
+    members.delete(best.cB);
+    commDegree.delete(best.cB);
+  }
+  return [...members.values()].map((s) => [...s]);
+}
+
 function computeGroups(view) {
   const raw = viewDefs[view]?.rawDiagram;
   if (!raw) return [];
   const { tables, relationships } = parseDiagram(raw);
 
+  // Undirected weighted adjacency; parallel foreign keys between the
+  // same pair of tables pull them together harder.
+  const adj = new Map([...tables.keys()].map((name) => [name, new Map()]));
+  for (const rel of relationships) {
+    if (!tables.has(rel.a) || !tables.has(rel.b) || rel.a === rel.b) continue;
+    adj.get(rel.a).set(rel.b, (adj.get(rel.a).get(rel.b) || 0) + 1);
+    adj.get(rel.b).set(rel.a, (adj.get(rel.b).get(rel.a) || 0) + 1);
+  }
+
+  // Connected components via union-find.
   const parent = new Map([...tables.keys()].map((name) => [name, name]));
   function find(x) { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; }
   function union(x, y) { const rx = find(x), ry = find(y); if (rx !== ry) parent.set(rx, ry); }
-
-  for (const rel of relationships) {
-    if (tables.has(rel.a) && tables.has(rel.b)) union(rel.a, rel.b);
+  for (const [name, neighbours] of adj) {
+    for (const nb of neighbours.keys()) union(name, nb);
   }
 
   const byRoot = new Map();
@@ -949,10 +1105,29 @@ function computeGroups(view) {
     byRoot.get(root).push(name);
   }
 
-  const groups = [...byRoot.values()]
-    .map((names) => names.sort())
-    .sort((a, b) => b.length - a.length || a[0].localeCompare(b[0]))
-    .map((names, index) => ({ id: `g${index}`, tables: names }));
+  const unconnected = [];
+  const clusters = [];
+  for (const component of byRoot.values()) {
+    // A table with no relationship at all -> the shared "Unconnected" bucket.
+    if (component.length === 1 && adj.get(component[0]).size === 0) {
+      unconnected.push(component[0]);
+      continue;
+    }
+    // Otherwise carve the component into tightly-connected sub-clusters.
+    for (const sub of greedyModularityCommunities(component, adj)) clusters.push(sub.sort());
+  }
+
+  clusters.sort((a, b) => b.length - a.length || a[0].localeCompare(b[0]));
+
+  const groups = clusters.map((names, index) => ({
+    id: `g${index}`,
+    tables: names,
+    kind: 'cluster',
+  }));
+
+  if (unconnected.length) {
+    groups.push({ id: 'unconnected', tables: unconnected.sort(), kind: 'unconnected' });
+  }
 
   return groups;
 }
@@ -1047,7 +1222,11 @@ function renderGroupMenu() {
 
     const text = document.createElement('span');
     const preview = group.tables.slice(0, 4).join(', ') + (group.tables.length > 4 ? `, +${group.tables.length - 4} more` : '');
-    text.innerHTML = `<span class="group-name">Group ${index + 1} — ${group.tables.length} table${group.tables.length !== 1 ? 's' : ''}</span><span class="group-tables">${preview}</span>`;
+    const count = `${group.tables.length} table${group.tables.length !== 1 ? 's' : ''}`;
+    const name = group.kind === 'unconnected'
+      ? `Unconnected tables — ${count}`
+      : `Cluster ${index + 1} — ${count}`;
+    text.innerHTML = `<span class="group-name">${name}</span><span class="group-tables">${preview}</span>`;
 
     item.append(checkbox, text);
     menu.appendChild(item);
@@ -1091,7 +1270,8 @@ groupBtn.addEventListener('click', (e) => {
 /* ---------- Boot ---------- */
 
 updateThemeButton();
-await renderBothDiagrams();
+updateViewModeAttr();
+await renderActiveDiagrams();
 loadDatabaseList();
 initPanZoom();
 requestAnimationFrame(() => requestAnimationFrame(() => fitToView(false)));
