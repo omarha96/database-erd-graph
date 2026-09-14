@@ -1337,8 +1337,13 @@ function initPanZoom() {
   document.getElementById('zoom-in').addEventListener('click', () => zoomBy(0.15));
   document.getElementById('zoom-fit').addEventListener('click', () => fitToView(true));
 
+  // Tracks whether the middle (wheel) button is currently held down, so
+  // wheel ticks fired while holding it for a middle-drag don't also zoom.
+  let middleButtonDown = false;
+
   viewport.addEventListener('wheel', (e) => {
     e.preventDefault();
+    if (middleButtonDown) return;
     const delta = e.deltaY < 0 ? 0.1 : -0.1;
     zoomAt(e.clientX, e.clientY, delta);
   }, { passive: false });
@@ -1392,9 +1397,16 @@ function initPanZoom() {
   viewport.addEventListener('auxclick', (e) => {
     if (e.button === 1) e.preventDefault();
   });
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 1) middleButtonDown = false;
+  });
+  window.addEventListener('blur', () => { middleButtonDown = false; });
 
   viewport.addEventListener('pointerdown', (e) => {
-    if (e.button === 1) e.preventDefault();
+    if (e.button === 1) {
+      e.preventDefault();
+      middleButtonDown = true;
+    }
     viewport.setPointerCapture(e.pointerId);
     activePointers.set(e.pointerId, pointFrom(e));
 
