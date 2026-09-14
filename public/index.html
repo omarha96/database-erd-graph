@@ -1337,13 +1337,13 @@ function initPanZoom() {
   document.getElementById('zoom-in').addEventListener('click', () => zoomBy(0.15));
   document.getElementById('zoom-fit').addEventListener('click', () => fitToView(true));
 
-  // Tracks whether the middle (wheel) button is currently held down, so
-  // wheel ticks fired while holding it for a middle-drag don't also zoom.
-  let middleButtonDown = false;
+  // Tracks the pointerId of a held-down middle (wheel) button, so wheel
+  // ticks fired while holding it for a middle-drag don't also zoom.
+  let middleButtonPointerId = null;
 
   viewport.addEventListener('wheel', (e) => {
     e.preventDefault();
-    if (middleButtonDown) return;
+    if (middleButtonPointerId !== null) return;
     const delta = e.deltaY < 0 ? 0.1 : -0.1;
     zoomAt(e.clientX, e.clientY, delta);
   }, { passive: false });
@@ -1397,15 +1397,12 @@ function initPanZoom() {
   viewport.addEventListener('auxclick', (e) => {
     if (e.button === 1) e.preventDefault();
   });
-  window.addEventListener('mouseup', (e) => {
-    if (e.button === 1) middleButtonDown = false;
-  });
-  window.addEventListener('blur', () => { middleButtonDown = false; });
+  window.addEventListener('blur', () => { middleButtonPointerId = null; });
 
   viewport.addEventListener('pointerdown', (e) => {
     if (e.button === 1) {
       e.preventDefault();
-      middleButtonDown = true;
+      middleButtonPointerId = e.pointerId;
     }
     viewport.setPointerCapture(e.pointerId);
     activePointers.set(e.pointerId, pointFrom(e));
@@ -1439,6 +1436,7 @@ function initPanZoom() {
   });
 
   function releasePointer(e) {
+    if (e.pointerId === middleButtonPointerId) middleButtonPointerId = null;
     if (!activePointers.has(e.pointerId)) return;
     activePointers.delete(e.pointerId);
     try { viewport.releasePointerCapture(e.pointerId); } catch { /* already released */ }
