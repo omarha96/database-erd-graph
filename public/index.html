@@ -469,7 +469,7 @@ button { color: var(--fb-text); }
     </div>
   </div>
 
-  <div id="hint">scroll to zoom · drag to pan · click an <strong>id</strong> for reverse relations · press 0 to fit &amp; center</div>
+  <div id="hint">scroll to zoom · drag or arrow keys to pan · click an <strong>id</strong> for reverse relations · press 0 to fit &amp; center</div>
 </div>
 
 <div id="loading-overlay" hidden>
@@ -1383,7 +1383,18 @@ function initPanZoom() {
     viewport.classList.remove('grabbing');
   }
 
+  // Middle-click normally triggers the browser's native autoscroll/pan
+  // mode (and its zoom cursor); suppress that so it doesn't fight our
+  // own pan/zoom handling.
+  viewport.addEventListener('mousedown', (e) => {
+    if (e.button === 1) e.preventDefault();
+  });
+  viewport.addEventListener('auxclick', (e) => {
+    if (e.button === 1) e.preventDefault();
+  });
+
   viewport.addEventListener('pointerdown', (e) => {
+    if (e.button === 1) e.preventDefault();
     viewport.setPointerCapture(e.pointerId);
     activePointers.set(e.pointerId, pointFrom(e));
 
@@ -1457,6 +1468,14 @@ function initPanZoom() {
     } else if (e.key === '0' || e.code === 'Numpad0') {
       e.preventDefault();
       fitToView(true);
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      const step = 60;
+      if (e.key === 'ArrowUp') panY += step;
+      else if (e.key === 'ArrowDown') panY -= step;
+      else if (e.key === 'ArrowLeft') panX += step;
+      else if (e.key === 'ArrowRight') panX -= step;
+      applyTransform(true);
     }
   });
 
