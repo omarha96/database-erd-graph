@@ -18,12 +18,14 @@
 require('dotenv').config();
 
 const http = require('http');
+const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
 const { fetchSchema } = require('./lib/schema');
 
 const PORT = process.env.PORT || 4440;
+const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 // Pools are cached per-database name, since Postgres connections are
@@ -158,6 +160,9 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`ERD viewer running at http://localhost:${PORT}`);
+server.listen(PORT, HOST, () => {
+  const lanIp = Object.values(os.networkInterfaces())
+    .flat()
+    .find((i) => i.family === 'IPv4' && !i.internal)?.address;
+  console.log(`ERD viewer running at http://localhost:${PORT}${lanIp ? ` (LAN: http://${lanIp}:${PORT})` : ''}`);
 });

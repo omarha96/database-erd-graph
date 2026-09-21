@@ -192,7 +192,7 @@ button { color: var(--fb-text); }
 .tool-group:first-child { padding-left: 0; }
 .tool-group:last-child { padding-right: 0; }
 .tool-group + .tool-group {
-  border-left: 2px solid var(--fb-text);
+  border-left: 2px solid color-mix(in srgb, var(--fb-text) 25%, transparent);
 }
 
 /* Full-screen loading overlay shown while a live schema is being fetched. */
@@ -466,6 +466,19 @@ button { color: var(--fb-text); }
         <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2Z"/></svg>
         <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></svg>
       </button>
+    </div>
+
+    <div class="tool-group" role="group" aria-label="File">
+      <button id="export-btn" type="button" aria-label="Export diagram" title="Export the current diagram as a JSON file">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+      </button>
+      <button id="export-sql-btn" type="button" aria-label="Export as MySQL script" title="Export as a .sql script importable by MySQL Workbench (Database → Reverse Engineer)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.66 3.58 3 8 3s8-1.34 8-3V6M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></svg>
+      </button>
+      <button id="import-btn" type="button" aria-label="Import diagram" title="Import a diagram JSON file exported from this viewer">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+      </button>
+      <input id="import-input" type="file" accept="application/json" hidden>
     </div>
   </div>
 
@@ -980,6 +993,128 @@ async function loadLiveSchema(databaseName) {
   }
 }
 
+/* ---------- Export / Import diagram ----------
+   Export writes the currently active view's Mermaid definition + fkTargets
+   (the same shape GET /api/schema returns) to a JSON file. Import reads
+   that same shape back and renders it into the 'live' layer, reusing the
+   normal renderDiagram() pipeline — so an exported file round-trips
+   through Import with no database connection required. */
+
+const exportBtn = document.getElementById('export-btn');
+const importBtn = document.getElementById('import-btn');
+const importInput = document.getElementById('import-input');
+
+exportBtn.addEventListener('click', () => {
+  const def = viewDefs[currentView];
+  if (!def) return;
+  const payload = {
+    source: currentView === 'live' ? (dbSelect.value || 'imported') : 'sample',
+    diagram: def.rawDiagram || def.diagram,
+    fkTargets: def.fkTargets,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `erd-${payload.source}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+/* Mermaid erDiagram column types are freeform (whatever the source DB
+   introspection or sample data uses) -- map the common ones to MySQL
+   types; anything unrecognized falls back to VARCHAR(255) rather than
+   failing the export. */
+const SQL_TYPE_MAP = {
+  uuid: 'CHAR(36)', timestamp: 'DATETIME', timestamptz: 'DATETIME',
+  date: 'DATE', int: 'INT', integer: 'INT', bigint: 'BIGINT',
+  smallint: 'SMALLINT', numeric: 'DECIMAL(12,2)', decimal: 'DECIMAL(12,2)',
+  float: 'DOUBLE', double: 'DOUBLE', boolean: 'TINYINT(1)', bool: 'TINYINT(1)',
+  text: 'TEXT', json: 'JSON', jsonb: 'JSON', string: 'VARCHAR(255)',
+  varchar: 'VARCHAR(255)', char: 'CHAR(1)',
+};
+function sqlType(mermaidType) { return SQL_TYPE_MAP[mermaidType.toLowerCase()] || 'VARCHAR(255)'; }
+function sqlIdent(name) { return `\`${name.replace(/`/g, '``')}\``; }
+
+function diagramToMysqlDDL(definition) {
+  const tableBlockRe = /^\s*([A-Za-z0-9_]+)\s*\{([\s\S]*?)\n\s*\}/gm;
+  const columnRe = /^\s*(\S+)\s+(\S+)(?:\s+(PK,FK|FK,PK|PK|FK))?\s*$/;
+  const tables = new Map(); // name -> [{ type, name, isPK, isFK }]
+  let m;
+  while ((m = tableBlockRe.exec(definition))) {
+    const cols = [];
+    for (const line of m[2].split('\n')) {
+      const cm = columnRe.exec(line);
+      if (!cm) continue;
+      const key = cm[3] || '';
+      cols.push({ type: cm[1], name: cm[2], isPK: key.includes('PK'), isFK: key.includes('FK') });
+    }
+    tables.set(m[1], cols);
+  }
+
+  const statements = [];
+  for (const [table, cols] of tables) {
+    const lines = cols.map((c) => `  ${sqlIdent(c.name)} ${sqlType(c.type)}${c.isPK ? ' NOT NULL' : ''}`);
+    const pk = cols.filter((c) => c.isPK).map((c) => sqlIdent(c.name));
+    if (pk.length) lines.push(`  PRIMARY KEY (${pk.join(', ')})`);
+    statements.push(`CREATE TABLE ${sqlIdent(table)} (\n${lines.join(',\n')}\n) ENGINE=InnoDB;`);
+  }
+  for (const [table, cols] of tables) {
+    for (const c of cols.filter((c) => c.isFK)) {
+      const targetTable = (viewDefs[currentView].fkTargets || {})[c.name];
+      const targetCols = targetTable ? tables.get(targetTable) : null;
+      const targetPk = targetCols?.find((tc) => tc.isPK);
+      if (!targetTable || !targetPk) continue;
+      statements.push(
+        `ALTER TABLE ${sqlIdent(table)} ADD CONSTRAINT ${sqlIdent(`fk_${table}_${c.name}`)} `
+        + `FOREIGN KEY (${sqlIdent(c.name)}) REFERENCES ${sqlIdent(targetTable)} (${sqlIdent(targetPk.name)});`
+      );
+    }
+  }
+  return statements.join('\n\n') + '\n';
+}
+
+const exportSqlBtn = document.getElementById('export-sql-btn');
+exportSqlBtn.addEventListener('click', () => {
+  const def = viewDefs[currentView];
+  if (!def) return;
+  const sql = diagramToMysqlDDL(def.rawDiagram || def.diagram);
+  const blob = new Blob([sql], { type: 'application/sql' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `erd-${currentView === 'live' ? (dbSelect.value || 'imported') : 'sample'}.sql`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+importBtn.addEventListener('click', () => importInput.click());
+
+importInput.addEventListener('change', async () => {
+  const file = importInput.files[0];
+  importInput.value = '';
+  if (!file) return;
+  try {
+    const payload = JSON.parse(await file.text());
+    if (!payload.diagram) throw new Error('File is missing a "diagram" field');
+
+    setDbQueryParam('');
+    dbSelect.value = '';
+    resetGroupStateFor('live');
+    viewDefs.live = { diagram: payload.diagram, fkTargets: payload.fkTargets || {}, rawDiagram: payload.diagram };
+    await renderDiagram('live', payload.diagram);
+
+    if (currentView === 'live') {
+      fitToView(false, layerFor('live'));
+    } else {
+      switchView('live');
+    }
+    updateViewModeAttr();
+  } catch (err) {
+    alert(`Could not import diagram:\n${err.message}`);
+  }
+});
+
 function returnToPlaceholder() {
   delete viewDefs.live;
   resetGroupStateFor('live');
@@ -987,7 +1122,18 @@ function returnToPlaceholder() {
   updateViewModeAttr();
 }
 
+function setDbQueryParam(databaseName) {
+  const url = new URL(window.location.href);
+  if (databaseName) {
+    url.searchParams.set('db', databaseName);
+  } else {
+    url.searchParams.delete('db');
+  }
+  window.history.replaceState(null, '', url);
+}
+
 dbSelect.addEventListener('change', () => {
+  setDbQueryParam(dbSelect.value);
   if (dbSelect.value) {
     loadLiveSchema(dbSelect.value);
   } else {
@@ -1272,7 +1418,13 @@ groupBtn.addEventListener('click', (e) => {
 updateThemeButton();
 updateViewModeAttr();
 await renderActiveDiagrams();
-loadDatabaseList();
+loadDatabaseList().then(() => {
+  const wantedDb = new URL(window.location.href).searchParams.get('db');
+  if (wantedDb && [...dbSelect.options].some((o) => o.value === wantedDb)) {
+    dbSelect.value = wantedDb;
+    loadLiveSchema(wantedDb);
+  }
+});
 initPanZoom();
 requestAnimationFrame(() => requestAnimationFrame(() => fitToView(false)));
 </script>
