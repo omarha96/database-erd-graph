@@ -10,7 +10,9 @@ const SECRET_NAME = /PASS|SECRET|TOKEN|KEY|CREDENTIAL|DATABASE_URL/i;
 const SERVER_SECRETS = ['PGPASSWORD', 'DATABASE_URL'];
 
 function noSecretsInBundle(env) {
-  const values = SERVER_SECRETS.map((k) => env[k] || process.env[k]).filter((v) => v && v.length >= 4);
+  const values = SERVER_SECRETS
+    .map((k) => (Object.hasOwn(env, k) ? env[k] : process.env[k]))
+    .filter((v) => v && v.length >= 4);
   return {
     name: 'no-secrets-in-bundle',
     config() {
