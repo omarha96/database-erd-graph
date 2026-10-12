@@ -380,6 +380,8 @@ button { color: var(--fb-text); font: inherit; }
    relationships stand out: full strength, thicker, with a soft glow. */
 .erd-edge { transition: opacity .2s ease, stroke-width .2s ease; }
 .names-preview .erd-edge:not(.active) { opacity: .22; }
+.erd-table { transition: box-shadow .15s ease, border-color .15s ease, opacity .2s ease; }
+.names-preview .erd-table.unrelated { opacity: .7; }
 .names-preview .erd-edge.active {
   stroke-width: 3.2;
   filter: drop-shadow(0 0 4px var(--erd-accent));

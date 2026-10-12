@@ -8,13 +8,15 @@ import { displayName } from './previewFont.js';
    individual rows using the fixed row height from model.js, so the two
    handles here only exist to satisfy React Flow and are invisible. */
 function TableNode({ data, selected }) {
-  const { table, width, referencedColumns } = data;
+  const { table, width, referencedColumns, neighbors } = data;
   const actions = useContext(ErdActions);
+  // Some other, unconnected table is hovered (only shown in the Ctrl preview).
+  const unrelated = useHighlight((s) => !!s.hovered && s.hovered !== table.name && !neighbors.has(s.hovered));
   const flash = useHighlight((s) => (s.flash?.table === table.name ? s.flash.column ?? '' : null));
 
   return (
     <div
-      className={`erd-table${selected ? ' selected' : ''}${flash !== null ? ' flash' : ''}`}
+      className={`erd-table${selected ? ' selected' : ''}${flash !== null ? ' flash' : ''}${unrelated ? ' unrelated' : ''}`}
       style={{ width }}
     >
       <Handle type="target" position={Position.Left} className="erd-handle" isConnectable={false} />

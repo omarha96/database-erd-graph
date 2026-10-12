@@ -128,7 +128,12 @@ export default function App() {
     if (layout && !presetPositions) writeRoutes(nextSource, nextRoutes);
 
     const referenced = new Map(normalized.tables.map((t) => [t.name, new Set()]));
-    for (const r of normalized.relationships) referenced.get(r.target).add(r.targetColumn);
+    const neighbors = new Map(normalized.tables.map((t) => [t.name, new Set()]));
+    for (const r of normalized.relationships) {
+      referenced.get(r.target).add(r.targetColumn);
+      neighbors.get(r.source).add(r.target);
+      neighbors.get(r.target).add(r.source);
+    }
 
     setSchema(normalized);
     setRoutes(nextRoutes);
@@ -144,7 +149,7 @@ export default function App() {
         position: saved[t.name] || auto[t.name] || { x: 0, y: 0 },
         width,
         height,
-        data: { table: t, width, referencedColumns: referenced.get(t.name) },
+        data: { table: t, width, referencedColumns: referenced.get(t.name), neighbors: neighbors.get(t.name) },
       };
     }));
     if (presetPositions) writePositions(nextSource, Object.entries(presetPositions).map(([id, position]) => ({ id, position })));
