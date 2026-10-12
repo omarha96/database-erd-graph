@@ -291,6 +291,9 @@ button { color: var(--fb-text); font: inherit; }
 
 /* ---------- Hovered-table label ---------- */
 #hover-label {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .18s ease, visibility 0s linear .18s;
   position: absolute;
   left: 12px;
   bottom: 12px;
@@ -306,6 +309,7 @@ button { color: var(--fb-text); font: inherit; }
   box-shadow: 0 4px 14px rgba(0,0,0,0.15);
   pointer-events: none;
 }
+#hover-label.visible { opacity: 1; visibility: visible; transition: opacity .18s ease; }
 #hover-label .hover-name { font-size: 14px; font-weight: 700; color: var(--erd-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #hover-label .hover-meta { font-size: 11px; color: var(--fb-text-sec); }
 
