@@ -7,6 +7,7 @@ import TableNode from './TableNode.jsx';
 import RelationEdge from './RelationEdge.jsx';
 import EdgeMarkers from './EdgeMarkers.jsx';
 import HoverLabel from './HoverLabel.jsx';
+import { maxFittingFontSize, previewFontReady, previewFontSize } from './previewFont.js';
 import Toolbar from './Toolbar.jsx';
 import { GroupMenu, ReferencesMenu } from './Menus.jsx';
 import { ErdActions } from './ErdActions.js';
@@ -258,11 +259,23 @@ export default function App() {
     setViewport({ x: cx - ((cx - x) * next) / zoom, y: cy - ((cy - y) * next) / zoom, zoom: next }, { duration: 150 });
   };
   const zoom = useStore((s) => s.transform[2]);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
 
   /* ---------- Hold Ctrl: names-only map preview ----------
      Only kicks in after Ctrl has been held on its own for a moment, so
      Ctrl+scroll, Ctrl+click or keyboard shortcuts don't flash it. */
   const [namesPreview, setNamesPreview] = useState(false);
+  const [fontReady, setFontReady] = useState(false);
+  useEffect(() => { previewFontReady.then(() => setFontReady(true)); }, []);
+  // Sized from the zoom at the moment the preview opens and then frozen,
+  // so zooming while Ctrl is held scales the labels with the canvas
+  // instead of re-wrapping them every frame (that was the "shaking").
+  const fitMax = useMemo(() => (fontReady ? maxFittingFontSize(nodes.filter((n) => !n.hidden)) : 16), [fontReady, schema, hiddenTables]); // eslint-disable-line react-hooks/exhaustive-deps
+  const previewFont = useMemo(
+    () => (namesPreview ? previewFontSize(zoomRef.current, fitMax) : null),
+    [namesPreview, fitMax],
+  );
   useEffect(() => {
     const HOLD_MS = 350;
     let timer;
@@ -300,7 +313,7 @@ export default function App() {
         id="erd-viewport"
         ref={viewportRef}
         className={namesPreview ? 'names-preview' : undefined}
-        style={{ '--inv-zoom': 1 / zoom }}
+        style={previewFont ? { '--preview-font': `${previewFont}px` } : undefined}
       >
         <ErdActions.Provider value={actions}>
           <ReactFlow

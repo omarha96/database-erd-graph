@@ -342,36 +342,38 @@ button { color: var(--fb-text); font: inherit; }
 
 /* ---------- Hold Ctrl: names-only map preview ----------
    Every table keeps its exact box and position; its contents fade out
-   and the name fades in, sized to stay readable at the current zoom
-   (--inv-zoom) but never wider than the table (cqi). */
-.erd-table { position: relative; container-type: inline-size; }
-.erd-table-header, .erd-row { transition: opacity .22s ease; }
+   and the name fades in. All names share one font size (--preview-font,
+   see previewFont.js). Only opacity animates, so text never reflows. */
+.erd-table { position: relative; }
+.erd-table-header, .erd-row { transition: opacity .2s ease; }
 .erd-table-preview {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px;
+  padding: 14px;
   background: color-mix(in srgb, var(--erd-header) 88%, var(--erd-row));
   color: var(--erd-header-text);
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
-  transition: opacity .22s ease;
+  transition: opacity .2s ease, visibility 0s linear .2s;
 }
 .erd-table-preview > span {
   font-family: 'Space Grotesk Variable', system-ui, sans-serif;
   font-weight: 600;
-  letter-spacing: -0.01em;
-  font-size: min(calc(15px * var(--inv-zoom)), 13cqi);
+  font-size: var(--preview-font, 16px);
   line-height: 1.15;
   text-align: center;
-  overflow-wrap: break-word;
-  transform: scale(.94);
-  transition: transform .22s ease;
+  overflow-wrap: normal;
+  word-break: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
 }
-.names-preview .erd-table-preview { opacity: 1; }
-.names-preview .erd-table-preview > span { transform: scale(1); }
+.names-preview .erd-table-preview { opacity: 1; visibility: visible; transition: opacity .2s ease; }
 .names-preview .erd-table-header, .names-preview .erd-row { opacity: 0; }
 .names-preview .react-flow__edges, .names-preview .react-flow__edgelabel-renderer { opacity: .35; }
-.react-flow__edges, .react-flow__edgelabel-renderer { transition: opacity .22s ease; }
+.react-flow__edges, .react-flow__edgelabel-renderer { transition: opacity .2s ease; }
