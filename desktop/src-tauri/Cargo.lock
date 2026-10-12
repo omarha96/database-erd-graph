@@ -733,7 +733,7 @@ dependencies = [
 
 [[package]]
 name = "erd-viewer"
-version = "2.0.0"
+version = "0.0.2"
 dependencies = [
  "tauri",
  "tauri-build",

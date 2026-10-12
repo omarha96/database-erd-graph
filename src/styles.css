@@ -399,6 +399,13 @@ button { color: var(--fb-text); font: inherit; }
 
 /* ---------- Connection menu ---------- */
 .connection-menu { width: 300px; max-height: none; }
+.server-item { display: flex; align-items: center; margin: 0 6px; border-radius: 7px; }
+.server-item:hover { background: var(--fb-surface1); }
+.server-item.active { background: var(--erd-accent-soft); }
+.server-pick { flex: 1; min-width: 0; padding: 7px 8px; border: 0; background: none; color: inherit; font: inherit; font-size: 12px; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.server-item.active .server-pick { font-weight: 600; }
+.server-remove { padding: 2px 8px; border: 0; background: none; color: var(--fb-text-sec); font-size: 16px; cursor: pointer; opacity: 0; }
+.server-item:hover .server-remove, .server-remove:focus-visible { opacity: 1; }
 .connection-form { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 12px; }
 .connection-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--fb-text-sec); }
 .connection-form input:not([type="checkbox"]) {

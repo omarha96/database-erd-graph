@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { readSavedServers, removeSavedServer } from './connection.js';
 
 /* Fixed-position popover below (or above, if it would overflow) an
    anchor rect; closes on outside click or Escape. */
@@ -80,6 +81,8 @@ export function ReferencesMenu({ anchor, title, references, onPick, onClose }) {
    defaults; the .env password itself is never shown or sent here. */
 export function ConnectionMenu({ anchor, initial, defaults, connected, databaseCount, onConnect, onReset, onClose }) {
   const [form, setForm] = useState(initial);
+  const [servers, setServers] = useState(readSavedServers);
+  const [active, setActive] = useState(connected ? initial : null); // the saved server in use
   const [status, setStatus] = useState(
     connected ? { ok: true, text: `Connected as ${connected.user}@${connected.server} — ${databaseCount} database${databaseCount !== 1 ? 's' : ''}` } : null,
   );
@@ -90,12 +93,13 @@ export function ConnectionMenu({ anchor, initial, defaults, connected, databaseC
   const usesEnvPassword = defaults?.hasPassword && !form.password
     && (form.server || envServer) === envServer && (form.user || defaults?.user) === defaults?.user;
 
-  const submit = async (e) => {
-    e.preventDefault();
+  const connect = async (conn) => {
     setBusy(true);
     setStatus(null);
     try {
-      const body = await onConnect(form);
+      const body = await onConnect(conn);
+      setServers(readSavedServers());
+      setActive(conn);
       setStatus({ ok: true, text: `Connected as ${body.user}@${body.server} — ${body.databases.length} database${body.databases.length !== 1 ? 's' : ''}` });
     } catch (err) {
       setStatus({ ok: false, text: err.message });
@@ -104,9 +108,33 @@ export function ConnectionMenu({ anchor, initial, defaults, connected, databaseC
     }
   };
 
+  const submit = (e) => { e.preventDefault(); connect(form); };
+  // Picking a saved server connects right away (the password, if needed,
+  // is typed again: it is never stored).
+  const pick = (entry) => {
+    const conn = { ...entry, password: sameEntry(entry, form) ? form.password : '' };
+    setForm(conn);
+    connect(conn);
+  };
+  const sameEntry = (a, b) => (a.server || '') === (b.server || '') && (a.user || '') === (b.user || '');
+
   return (
     <Popover anchor={anchor} className="connection-menu" onClose={onClose}>
-      <div className="popover-header"><span>Postgres connection</span></div>
+      <div className="popover-header">
+        <span>Servers</span>
+        <span className="popover-actions">
+          <button type="button" onClick={() => { setForm({ server: '', user: '', password: '', ssl: false }); setStatus(null); }}>+ New</button>
+        </span>
+      </div>
+      {servers.length === 0 && <div className="popover-empty">No saved servers yet. Connect below to add one.</div>}
+      {servers.map((entry) => (
+        <div key={`${entry.user}@${entry.server}`} className={`server-item${active && sameEntry(entry, active) ? ' active' : ''}`}>
+          <button type="button" className="server-pick" onClick={() => pick(entry)} disabled={busy} title="Connect to this server">
+            {entry.user || defaults?.user || 'postgres'}@{entry.server || envServer || 'default'}
+          </button>
+          <button type="button" className="server-remove" aria-label="Remove saved server" title="Remove" onClick={() => setServers(removeSavedServer(entry))}>×</button>
+        </div>
+      ))}
       <form className="connection-form" onSubmit={submit}>
         <label>
           <span>Server</span>
@@ -146,7 +174,7 @@ export function ConnectionMenu({ anchor, initial, defaults, connected, databaseC
           )}
           <button type="submit" className="primary-btn" disabled={busy}>{busy ? 'Connecting…' : 'Connect'}</button>
         </div>
-        <p className="connection-note">Server, username and SSL are remembered in this browser; the password is not.</p>
+        <p className="connection-note">Servers you connect to are saved in this browser (server, username, SSL); passwords are not.</p>
       </form>
     </Popover>
   );

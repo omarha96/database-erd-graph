@@ -236,6 +236,7 @@ export default function App() {
       connectionRef.current = conn;
       try {
         const body = await connect(conn);
+        saveConnection(conn);
         const wanted = new URL(window.location.href).searchParams.get('db');
         if (wanted && body.databases.includes(wanted)) loadDatabase(wanted);
       } catch (err) {
