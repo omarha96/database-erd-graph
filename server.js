@@ -1,15 +1,27 @@
 /**
  * server.js
  * ------------------------------------------------------------------
- * Static file server for the ERD viewer (serves ./public), plus one
- * JSON API route:
+ * Static file server for the built ERD viewer (serves ./dist, produced
+ * by `npm run build`), plus JSON API routes:
  *
- *   GET /api/schema[?schema=public]
- *     Introspects the Postgres database configured via .env (see
- *     .env.example) and returns { diagram, fkTargets, tableCount,
- *     relationshipCount } in the same shape public/data.js uses — the
- *     browser renders it with the exact same renderDiagram() code
- *     path as the static workflow/form diagrams.
+ *   GET|POST /api/schema
+ *     Introspects a Postgres database and returns
+ *     { tables, relationships, diagram, fkTargets, ... } —
+ *     see lib/schema.js.
+ *
+ *   GET|POST /api/databases
+ *     Lists the databases the Postgres user can connect to.
+ *
+ *   GET /api/connection
+ *     The .env connection defaults (never the password) used to prefill
+ *     the connection menu.
+ *
+ * POST bodies are { connection: { server, user, password, ssl },
+ * database, schema }; blank fields fall back to .env (lib/connection.js).
+ * GET requests use .env only, with ?database= / ?schema=.
+ *
+ * During development `npm run dev` runs Vite with hot reload and proxies
+ * /api to this server.
  *
  * All of the introspection logic lives in lib/schema.js so it can be
  * unit tested without a live database.
@@ -21,41 +33,12 @@ const http = require('http');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
-const { Pool } = require('pg');
 const { fetchSchema } = require('./lib/schema');
+const { publicDefaults, resolveConnection, poolFor } = require('./lib/connection');
 
 const PORT = process.env.PORT || 4440;
 const HOST = process.env.HOST || '0.0.0.0';
-const PUBLIC_DIR = path.join(__dirname, 'public');
-
-// Pools are cached per-database name, since Postgres connections are
-// bound to a single database and a user may switch between several
-// (see GET /api/databases below). Built lazily, not at startup, so the
-// static viewer still works fine even if no Postgres is configured.
-const pools = new Map();
-
-function poolConfigFor(databaseName) {
-  if (process.env.DATABASE_URL) {
-    const url = new URL(process.env.DATABASE_URL);
-    if (databaseName) url.pathname = `/${databaseName}`;
-    return { connectionString: url.toString() };
-  }
-  return {
-    host: process.env.PGHOST || 'localhost',
-    port: Number(process.env.PGPORT) || 5432,
-    user: process.env.PGUSER || 'postgres',
-    password: process.env.PGPASSWORD || '',
-    database: databaseName || process.env.PGDATABASE || 'postgres',
-  };
-}
-
-function getPool(databaseName) {
-  const key = databaseName || '__default__';
-  if (!pools.has(key)) {
-    pools.set(key, new Pool(poolConfigFor(databaseName)));
-  }
-  return pools.get(key);
-}
+const PUBLIC_DIR = path.join(__dirname, 'dist');
 
 const DATABASES_QUERY = `
   select datname
@@ -78,31 +61,53 @@ function sendJson(res, statusCode, payload) {
   res.end(body);
 }
 
-async function handleSchemaRequest(req, res, query) {
-  const schemaName = query.get('schema') || process.env.PGSCHEMA || 'public';
-  const databaseName = query.get('database') || undefined;
-  try {
-    const result = await fetchSchema(getPool(databaseName), schemaName);
-    sendJson(res, 200, result);
-  } catch (err) {
-    console.error('GET /api/schema failed:', err.message);
-    sendJson(res, 502, {
-      error: 'Could not read schema from Postgres.',
-      detail: err.message,
+const MAX_BODY_BYTES = 64 * 1024;
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) { reject(new Error('Request body too large.')); req.destroy(); return; }
+      chunks.push(chunk);
     });
+    req.on('end', () => {
+      try { resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}); } catch { reject(new Error('Invalid JSON body.')); }
+    });
+    req.on('error', reject);
+  });
+}
+
+/* Request parameters: POST bodies carry { connection, database, schema };
+   GET falls back to .env with ?database= / ?schema= query params. */
+async function requestParams(req, query) {
+  const body = req.method === 'POST' ? await readJsonBody(req) : {};
+  return {
+    conn: resolveConnection(body.connection || {}),
+    database: body.database || query.get('database') || undefined,
+    schema: body.schema || query.get('schema') || process.env.PGSCHEMA || 'public',
+  };
+}
+
+async function handleSchemaRequest(req, res, query) {
+  try {
+    const { conn, database, schema } = await requestParams(req, query);
+    sendJson(res, 200, await fetchSchema(poolFor(conn, database), schema));
+  } catch (err) {
+    console.error('/api/schema failed:', err.message);
+    sendJson(res, 502, { error: 'Could not read schema from Postgres.', detail: err.message });
   }
 }
 
-async function handleDatabasesRequest(req, res) {
+async function handleDatabasesRequest(req, res, query) {
   try {
-    const databases = await listDatabases(getPool());
-    sendJson(res, 200, { databases });
+    const { conn } = await requestParams(req, query);
+    const databases = await listDatabases(poolFor(conn));
+    sendJson(res, 200, { databases, server: `${conn.host}:${conn.port}`, user: conn.user });
   } catch (err) {
-    console.error('GET /api/databases failed:', err.message);
-    sendJson(res, 502, {
-      error: 'Could not list databases from Postgres.',
-      detail: err.message,
-    });
+    console.error('/api/databases failed:', err.message);
+    sendJson(res, 502, { error: 'Could not list databases from Postgres.', detail: err.message });
   }
 }
 
@@ -115,19 +120,27 @@ const MIME_TYPES = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
 };
 
 const server = http.createServer((req, res) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   let urlPath = decodeURIComponent(requestUrl.pathname);
 
-  if (req.method === 'GET' && urlPath === '/api/schema') {
+  const isRead = req.method === 'GET' || req.method === 'POST';
+  if (isRead && urlPath === '/api/schema') {
     handleSchemaRequest(req, res, requestUrl.searchParams);
     return;
   }
 
-  if (req.method === 'GET' && urlPath === '/api/databases') {
-    handleDatabasesRequest(req, res);
+  if (isRead && urlPath === '/api/databases') {
+    handleDatabasesRequest(req, res, requestUrl.searchParams);
+    return;
+  }
+
+  if (req.method === 'GET' && urlPath === '/api/connection') {
+    sendJson(res, 200, publicDefaults());
     return;
   }
 
@@ -144,7 +157,10 @@ const server = http.createServer((req, res) => {
 
   fs.readFile(filePath, (err, content) => {
     if (err) {
-      if (err.code === 'ENOENT') {
+      if (err.code === 'ENOENT' && urlPath === '/index.html') {
+        res.writeHead(503, { 'Content-Type': 'text/plain' });
+        res.end('Viewer not built yet. Run `npm run build` (or `npm run dev` for development).');
+      } else if (err.code === 'ENOENT') {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('404 Not Found');
       } else {
