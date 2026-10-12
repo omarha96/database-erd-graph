@@ -23,6 +23,8 @@
     "@xyflow/react": "^12.12.0",
     "concurrently": "^10.0.6",
     "elkjs": "^0.12.0",
+    "html-to-image": "^1.11.11",
+    "jspdf": "^4.2.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "vite": "^8.3.4"

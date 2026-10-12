@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background, BackgroundVariant, MiniMap, ReactFlow,
-  useNodesState, useReactFlow, useStore,
+  useNodesState, useReactFlow, useStore, ViewportPortal,
 } from '@xyflow/react';
 import TableNode from './TableNode.jsx';
 import RelationEdge from './RelationEdge.jsx';
 import EdgeMarkers from './EdgeMarkers.jsx';
 import HoverLabel from './HoverLabel.jsx';
+import { exportDiagramPdf, exportViewPng } from './capture.js';
 import { maxFittingFontSize, previewFontReady, previewFontSize } from './previewFont.js';
 import Toolbar from './Toolbar.jsx';
 import { GroupMenu, ReferencesMenu } from './Menus.jsx';
@@ -255,6 +256,13 @@ export default function App() {
     const payload = { version: 2, source: source.name, ...schema, positions };
     download(`erd-${source.name}.json`, JSON.stringify(payload, null, 2), 'application/json');
   };
+  const [exporting, setExporting] = useState(false);
+  const runExport = async (fn) => {
+    setExporting(true);
+    try { await fn(); } catch (err) { alert(`Export failed:\n${err.message}`); } finally { setExporting(false); }
+  };
+  const exportPng = () => runExport(() => exportViewPng(viewportRef.current.querySelector('.react-flow'), `erd-${source.name}.png`));
+  const exportPdf = () => runExport(() => exportDiagramPdf(viewportRef.current.querySelector('.react-flow__viewport'), getNodes(), `erd-${source.name}.pdf`));
   const exportSql = () => download(`erd-${source.name}.sql`, toMysqlDDL(schema), 'application/sql');
   const importFile = async (file) => {
     try {
@@ -348,7 +356,6 @@ export default function App() {
   return (
     <div id="erd-wrap" data-view-mode={source.kind === 'sample' ? 'placeholder' : 'live'}>
       <h1 className="sr-only">Database ERD viewer</h1>
-      <EdgeMarkers />
       <div
         id="erd-viewport"
         ref={viewportRef}
@@ -377,6 +384,8 @@ export default function App() {
             proOptions={{ hideAttribution: true }}
           >
             <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
+            {/* Inside the viewport so image/PDF exports include the markers. */}
+            <ViewportPortal><EdgeMarkers /></ViewportPortal>
             <MiniMap pannable zoomable nodeColor="var(--erd-header)" nodeBorderRadius={4} className="erd-minimap" />
           </ReactFlow>
         </ErdActions.Provider>
@@ -404,6 +413,9 @@ export default function App() {
         onToggleTheme={toggleTheme}
         onExportJson={exportJson}
         onExportSql={exportSql}
+        onExportPng={exportPng}
+        onExportPdf={exportPdf}
+        exporting={exporting}
         onImport={importFile}
         disabled={!!loading}
       />
