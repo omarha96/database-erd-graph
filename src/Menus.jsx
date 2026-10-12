@@ -75,3 +75,79 @@ export function ReferencesMenu({ anchor, title, references, onPick, onClose }) {
     </Popover>
   );
 }
+
+/* Postgres connection settings. Blank fields use the server's .env
+   defaults; the .env password itself is never shown or sent here. */
+export function ConnectionMenu({ anchor, initial, defaults, connected, databaseCount, onConnect, onReset, onClose }) {
+  const [form, setForm] = useState(initial);
+  const [status, setStatus] = useState(
+    connected ? { ok: true, text: `Connected as ${connected.user}@${connected.server} — ${databaseCount} database${databaseCount !== 1 ? 's' : ''}` } : null,
+  );
+  const [busy, setBusy] = useState(false);
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
+
+  const envServer = defaults?.server;
+  const usesEnvPassword = defaults?.hasPassword && !form.password
+    && (form.server || envServer) === envServer && (form.user || defaults?.user) === defaults?.user;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setStatus(null);
+    try {
+      const body = await onConnect(form);
+      setStatus({ ok: true, text: `Connected as ${body.user}@${body.server} — ${body.databases.length} database${body.databases.length !== 1 ? 's' : ''}` });
+    } catch (err) {
+      setStatus({ ok: false, text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Popover anchor={anchor} className="connection-menu" onClose={onClose}>
+      <div className="popover-header"><span>Postgres connection</span></div>
+      <form className="connection-form" onSubmit={submit}>
+        <label>
+          <span>Server</span>
+          <input
+            value={form.server}
+            onChange={set('server')}
+            placeholder={envServer || 'host:port or postgres://…'}
+            autoComplete="off"
+            spellCheck={false}
+            autoFocus
+          />
+        </label>
+        <label>
+          <span>Username</span>
+          <input value={form.user} onChange={set('user')} placeholder={defaults?.user || 'postgres'} autoComplete="username" spellCheck={false} />
+        </label>
+        <label>
+          <span>Password</span>
+          <input
+            type="password"
+            value={form.password}
+            onChange={set('password')}
+            placeholder={usesEnvPassword ? 'from .env' : ''}
+            autoComplete="current-password"
+          />
+        </label>
+        <label className="connection-check">
+          <input type="checkbox" checked={!!form.ssl} onChange={set('ssl')} />
+          <span>Use SSL (required by most hosted databases)</span>
+        </label>
+        {status && <div className={`connection-status ${status.ok ? 'ok' : 'error'}`} role="status">{status.text}</div>}
+        <div className="connection-actions">
+          {defaults && (
+            <button type="button" className="link-btn" onClick={() => { setForm(onReset()); setStatus(null); }}>
+              Reset to .env defaults
+            </button>
+          )}
+          <button type="submit" className="primary-btn" disabled={busy}>{busy ? 'Connecting…' : 'Connect'}</button>
+        </div>
+        <p className="connection-note">Server, username and SSL are remembered in this browser; the password is not.</p>
+      </form>
+    </Popover>
+  );
+}

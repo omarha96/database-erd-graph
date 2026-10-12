@@ -5,7 +5,7 @@ const Icon = ({ d, children, style }) => (
 );
 
 export default function Toolbar({
-  databases, selectedDatabase, onSelectDatabase,
+  databases, selectedDatabase, onSelectDatabase, connectionLabel, connected, onToggleConnectionMenu,
   groupsActive, onToggleGroupMenu, onRelayout,
   spacing, spacingSteps, onSpacing,
   zoom, onZoomIn, onZoomOut, onFit,
@@ -19,6 +19,17 @@ export default function Toolbar({
   return (
     <div id="zoom-controls" role="group" aria-label="Diagram controls">
       <div className="tool-group" role="group" aria-label="Data source">
+        <button
+          type="button"
+          data-popover-toggle
+          aria-label="Database connection"
+          className={connected ? undefined : 'disconnected'}
+          data-tooltip={`Connection — ${connectionLabel}`}
+          onClick={(e) => { e.stopPropagation(); onToggleConnectionMenu(e.currentTarget.getBoundingClientRect()); }}
+          disabled={disabled}
+        >
+          <Icon><rect x="3" y="4" width="18" height="6" rx="1.5" /><rect x="3" y="14" width="18" height="6" rx="1.5" /><path d="M7 7h.01M7 17h.01" /></Icon>
+        </button>
         <select
           id="database-select"
           aria-label="Select Postgres database"

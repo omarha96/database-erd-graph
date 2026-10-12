@@ -11,12 +11,13 @@ import { exportViewPng } from './capture.js';
 import { exportDiagramVectorPdf } from './pdfExport.js';
 import { maxFittingFontSize, previewFontReady, previewFontSize } from './previewFont.js';
 import Toolbar from './Toolbar.jsx';
-import { GroupMenu, ReferencesMenu } from './Menus.jsx';
+import { ConnectionMenu, GroupMenu, ReferencesMenu } from './Menus.jsx';
 import { ErdActions } from './ErdActions.js';
 import { flashTable, setHoveredTable } from './highlightStore.js';
 import { layoutTables } from './layout.js';
 import { computeGroups, edgeId, normalizeSchema, parseMermaidSchema, tableSize, toMysqlDDL } from './model.js';
 import { sampleSchema } from './sampleSchema.js';
+import { api, clearSavedConnection, readSavedConnection, saveConnection } from './connection.js';
 
 const nodeTypes = { table: TableNode };
 const edgeTypes = { relation: RelationEdge };
@@ -30,7 +31,10 @@ function readSpacing() {
 }
 
 /* ---------- Saved table positions (per data source, in localStorage) ---------- */
-const positionsKey = (source) => `erd-positions:${source.kind}:${source.name}`;
+// Keyed by server too, so same-named databases on different servers keep
+// their own arrangement.
+const sourceKey = (source) => `${source.kind}:${source.server ? `${source.server}/` : ''}${source.name}`;
+const positionsKey = (source) => `erd-positions:${sourceKey(source)}`;
 function readPositions(source) {
   try { return JSON.parse(localStorage.getItem(positionsKey(source))) || {}; } catch { return {}; }
 }
@@ -46,7 +50,7 @@ function clearPositions(source) {
 // ELK's edge routes from the last tidy layout. Each route remembers the
 // table positions it was made for, so RelationEdge ignores it once
 // either end has been dragged.
-const routesKey = (source) => `erd-routes:${source.kind}:${source.name}`;
+const routesKey = (source) => `erd-routes:${sourceKey(source)}`;
 function readRoutes(source) {
   try { return JSON.parse(localStorage.getItem(routesKey(source))) || {}; } catch { return {}; }
 }
@@ -177,35 +181,80 @@ export default function App() {
     relayout(next);
   };
 
+  /* ---------- Postgres connection ----------
+     Settings come from the connection menu; blank fields fall back to the
+     server's .env (whose password never reaches the browser). */
+  const [connDefaults, setConnDefaults] = useState(null);
+  const [connection, setConnection] = useState(null); // { server, user, password, ssl }
+  const [connInfo, setConnInfo] = useState(null); // { server, user } of the last successful connect
+  const [connMenuAnchor, setConnMenuAnchor] = useState(null);
+  // Refs are updated synchronously by connect(), so a load that follows
+  // it in the same tick already sees the new server.
+  const connectionRef = useRef(connection);
+  const connInfoRef = useRef(connInfo);
+
   const loadDatabase = useCallback(async (name) => {
     setLoading(`Loading schema for "${name}"…`);
     try {
-      const res = await fetch(`/api/schema?database=${encodeURIComponent(name)}`);
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.detail || body.error || `HTTP ${res.status}`);
-      await showSchema(body, { kind: 'db', name });
+      const body = await api('/api/schema', { connection: connectionRef.current, database: name });
+      await showSchema(body, { kind: 'db', name, server: connInfoRef.current?.server });
       setDbQueryParam(name);
     } catch (err) {
-      alert(`Could not load schema from "${name}":\n${err.message}\n\nCheck .env and that Postgres is running.`);
+      alert(`Could not load schema from "${name}":\n${err.message}\n\nCheck the connection settings and that Postgres is reachable.`);
       setDbQueryParam('');
     } finally {
       setLoading(null);
     }
   }, [showSchema]);
 
-  // Boot: sample schema, then the database list (and ?db= if present).
+  // Lists the server's databases; on success these settings become current.
+  const connect = useCallback(async (conn) => {
+    const body = await api('/api/databases', { connection: conn });
+    setConnection(conn);
+    connectionRef.current = conn;
+    connInfoRef.current = { server: body.server, user: body.user };
+    setConnInfo(connInfoRef.current);
+    setDatabases(body.databases);
+    return body;
+  }, []);
+
+  // Boot: sample schema, then .env defaults + saved settings, then the
+  // database list (and ?db= if present).
   useEffect(() => {
     showSchema(sampleSchema, SAMPLE_SOURCE);
-    fetch('/api/databases')
-      .then(async (res) => {
-        const body = await res.json();
-        if (!res.ok) throw new Error(body.detail || body.error || `HTTP ${res.status}`);
-        setDatabases(body.databases);
+    (async () => {
+      const defaults = await api('/api/connection').catch(() => null);
+      setConnDefaults(defaults);
+      const saved = readSavedConnection();
+      const conn = {
+        server: saved?.server ?? defaults?.server ?? '',
+        user: saved?.user ?? defaults?.user ?? '',
+        password: '',
+        ssl: saved?.ssl ?? defaults?.ssl ?? false,
+      };
+      setConnection(conn);
+      connectionRef.current = conn;
+      try {
+        const body = await connect(conn);
         const wanted = new URL(window.location.href).searchParams.get('db');
         if (wanted && body.databases.includes(wanted)) loadDatabase(wanted);
-      })
-      .catch((err) => console.warn('Could not list databases:', err.message));
+      } catch (err) {
+        console.warn('Could not list databases:', err.message);
+      }
+    })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onConnect = async (conn) => {
+    const body = await connect(conn);
+    saveConnection(conn);
+    // The open diagram belongs to the previous server; go back to the sample.
+    if (source.kind === 'db') { setDbQueryParam(''); showSchema(sampleSchema, SAMPLE_SOURCE); }
+    return body;
+  };
+  const onResetConnection = () => {
+    clearSavedConnection();
+    return { server: connDefaults?.server ?? '', user: connDefaults?.user ?? '', password: '', ssl: connDefaults?.ssl ?? false };
+  };
 
   const onSelectDatabase = (name) => {
     if (name) loadDatabase(name);
@@ -398,6 +447,9 @@ export default function App() {
 
       <Toolbar
         databases={databases}
+        connectionLabel={connInfo ? `${connInfo.user}@${connInfo.server}` : 'not connected, click to set up'}
+        connected={!!connInfo}
+        onToggleConnectionMenu={(rect) => setConnMenuAnchor((a) => (a ? null : rect))}
         selectedDatabase={source.kind === 'db' ? source.name : ''}
         onSelectDatabase={onSelectDatabase}
         groupsActive={hiddenGroups.size > 0}
@@ -424,6 +476,18 @@ export default function App() {
         drag tables to arrange · hold Ctrl for a names-only map · scroll to zoom · drag background or arrow keys to pan · click an FK to jump · click a referenced PK for reverse relations · press 0 to fit
       </div>
 
+      {connMenuAnchor && connection && (
+        <ConnectionMenu
+          anchor={connMenuAnchor}
+          initial={connection}
+          defaults={connDefaults}
+          connected={connInfo}
+          databaseCount={databases.length}
+          onConnect={onConnect}
+          onReset={onResetConnection}
+          onClose={() => setConnMenuAnchor(null)}
+        />
+      )}
       {groupMenuAnchor && (
         <GroupMenu
           anchor={groupMenuAnchor}

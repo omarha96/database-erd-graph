@@ -26,14 +26,30 @@ connectivity grouping, light/dark themes, and JSON / MySQL export.
 
 ```bash
 npm install
-cp .env.example .env   # then point it at your Postgres
+cp .env.example .env   # optional: default connection settings
 ```
 
-Use discrete `PG*` vars or a single `DATABASE_URL`:
+## Connecting to Postgres
 
-```
-DATABASE_URL=postgres://user:password@localhost:5432/mydb
-```
+Click the **server icon** at the left of the toolbar to open the
+connection menu: enter a server (`host`, `host:port`, or a full
+`postgres://user:pass@host:port/db?sslmode=require` URL), username and
+password, tick **Use SSL** for hosted databases, and press **Connect**.
+The database dropdown then lists that server's databases. A red dot on
+the icon means there is no working connection yet.
+
+- `.env` (`DATABASE_URL` or `PG*` variables, see `.env.example`) only
+  provides **defaults** that prefill the menu; any field left blank falls
+  back to it.
+- The `.env` password is never sent to the browser, and is only used when
+  connecting to the `.env` server as the `.env` user, so it can't be
+  handed to some other server.
+- Server, username and SSL are remembered in the browser; passwords are
+  not, so after a reload you re-enter the password for non-`.env`
+  servers.
+- The server connects to whatever host you enter, so only expose the app
+  (it listens on `0.0.0.0` by default, set `HOST=127.0.0.1` to restrict
+  it) on networks you trust.
 
 ## Run it
 
@@ -45,7 +61,8 @@ npm start       # serve ./dist + API on http://localhost:4440 (set PORT to chang
 
 ## Schema shape
 
-`GET /api/schema?database=<name>[&schema=public]` returns:
+`POST /api/schema` with `{ connection: { server, user, password, ssl }, database, schema }`
+(or `GET /api/schema?database=<name>` using `.env` only) returns:
 
 ```js
 {
@@ -76,7 +93,7 @@ npm start       # serve ./dist + API on http://localhost:4440 (set PORT to chang
   unchecking a group hides those tables without re-laying out the rest.
 - The camera button saves a PNG screenshot of the current view; the PDF
   button exports the whole diagram on one page as a vector PDF (sharp at
-  any zoom, with selectable and searchable text).
+  any zoom, with selectable and searchable text, set in Space Grotesk).
 - Export the diagram as JSON (schema + table positions) or as a MySQL
   `.sql` script; Import accepts both this JSON and files exported by the
   old Mermaid-based viewer.
