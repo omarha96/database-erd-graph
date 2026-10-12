@@ -1,15 +1,19 @@
 /**
  * server.js
  * ------------------------------------------------------------------
- * Static file server for the ERD viewer (serves ./public), plus one
- * JSON API route:
+ * Static file server for the built ERD viewer (serves ./dist, produced
+ * by `npm run build`), plus two JSON API routes:
  *
  *   GET /api/schema[?schema=public]
  *     Introspects the Postgres database configured via .env (see
- *     .env.example) and returns { diagram, fkTargets, tableCount,
- *     relationshipCount } in the same shape public/data.js uses — the
- *     browser renders it with the exact same renderDiagram() code
- *     path as the static workflow/form diagrams.
+ *     .env.example) and returns { tables, relationships, diagram, fkTargets, ... } —
+ *     see lib/schema.js.
+ *
+ *   GET /api/databases
+ *     Lists the databases the configured Postgres user can connect to.
+ *
+ * During development `npm run dev` runs Vite with hot reload and proxies
+ * /api to this server.
  *
  * All of the introspection logic lives in lib/schema.js so it can be
  * unit tested without a live database.
@@ -26,7 +30,7 @@ const { fetchSchema } = require('./lib/schema');
 
 const PORT = process.env.PORT || 4440;
 const HOST = process.env.HOST || '0.0.0.0';
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_DIR = path.join(__dirname, 'dist');
 
 // Pools are cached per-database name, since Postgres connections are
 // bound to a single database and a user may switch between several
@@ -115,6 +119,7 @@ const MIME_TYPES = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
 };
 
 const server = http.createServer((req, res) => {
@@ -144,7 +149,10 @@ const server = http.createServer((req, res) => {
 
   fs.readFile(filePath, (err, content) => {
     if (err) {
-      if (err.code === 'ENOENT') {
+      if (err.code === 'ENOENT' && urlPath === '/index.html') {
+        res.writeHead(503, { 'Content-Type': 'text/plain' });
+        res.end('Viewer not built yet. Run `npm run build` (or `npm run dev` for development).');
+      } else if (err.code === 'ENOENT') {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('404 Not Found');
       } else {

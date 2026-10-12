@@ -4,8 +4,8 @@
     {
       "name": "erd-viewer",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["start"],
-      "port": 4440
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
     }
   ]
 }

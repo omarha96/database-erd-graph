@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ERD Viewer</title>
+<link rel="icon" href="data:,">
+<script>
+  // Apply the saved theme before first paint to avoid a light/dark flash.
+  try {
+    const saved = localStorage.getItem('erd-theme');
+    document.documentElement.dataset.mode = saved === 'dark' || saved === 'light'
+      ? saved
+      : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  } catch { document.documentElement.dataset.mode = 'light'; }
+</script>
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="/src/main.jsx"></script>
+</body>
+</html>

@@ -1,17 +1,29 @@
 {
   "name": "erd-viewer",
-  "version": "1.0.0",
-  "description": "Interactive Mermaid ER diagram viewer with pan/zoom, FK navigation, and light/dark themes. Graph data lives in public/data.js.",
+  "version": "2.0.0",
+  "description": "Interactive ER diagram viewer for Postgres schemas, built on React Flow with ELK auto-layout and draggable tables.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "dev": "concurrently -k -n api,web -c blue,magenta \"node server.js\" \"vite\"",
+    "build": "vite build",
+    "start": "node server.js",
+    "preview": "npm run build && node server.js"
   },
   "engines": {
-    "node": ">=14"
+    "node": ">=18"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
     "pg": "^8.12.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "@xyflow/react": "^12.12.0",
+    "concurrently": "^10.0.6",
+    "elkjs": "^0.12.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "vite": "^8.3.4"
+  }
 }
