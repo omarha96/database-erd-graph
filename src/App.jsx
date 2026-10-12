@@ -259,21 +259,36 @@ export default function App() {
   };
   const zoom = useStore((s) => s.transform[2]);
 
-  /* ---------- Hold Ctrl: names-only map preview ---------- */
+  /* ---------- Hold Ctrl: names-only map preview ----------
+     Only kicks in after Ctrl has been held on its own for a moment, so
+     Ctrl+scroll, Ctrl+click or keyboard shortcuts don't flash it. */
   const [namesPreview, setNamesPreview] = useState(false);
   useEffect(() => {
-    const down = (e) => { if (e.key === 'Control' && !e.repeat) setNamesPreview(true); };
-    const up = (e) => { if (e.key === 'Control') setNamesPreview(false); };
-    const off = () => setNamesPreview(false);
+    const HOLD_MS = 350;
+    let timer;
+    const cancel = () => { clearTimeout(timer); timer = undefined; setNamesPreview(false); };
+    const down = (e) => {
+      if (e.key !== 'Control') { cancel(); return; }
+      if (!e.repeat && !timer) timer = setTimeout(() => setNamesPreview(true), HOLD_MS);
+    };
+    const up = (e) => { if (e.key === 'Control') cancel(); };
+    // Using Ctrl as a modifier for the pointer means it isn't a "hold".
+    // Capture phase: React Flow stops wheel/pointer events from bubbling.
+    const pointer = () => { if (timer) { clearTimeout(timer); timer = undefined; } };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
-    window.addEventListener('blur', off);
-    document.addEventListener('visibilitychange', off);
+    window.addEventListener('wheel', pointer, { passive: true, capture: true });
+    window.addEventListener('pointerdown', pointer, true);
+    window.addEventListener('blur', cancel);
+    document.addEventListener('visibilitychange', cancel);
     return () => {
+      clearTimeout(timer);
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
-      window.removeEventListener('blur', off);
-      document.removeEventListener('visibilitychange', off);
+      window.removeEventListener('wheel', pointer, true);
+      window.removeEventListener('pointerdown', pointer, true);
+      window.removeEventListener('blur', cancel);
+      document.removeEventListener('visibilitychange', cancel);
     };
   }, []);
 
