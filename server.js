@@ -20,6 +20,9 @@
  * database, schema }; blank fields fall back to .env (lib/connection.js).
  * GET requests use .env only, with ?database= / ?schema=.
  *
+ * The desktop app (desktop/src-tauri) bundles this server as a standalone
+ * binary and starts it on a private localhost port (PORT=0, HOST=127.0.0.1).
+ *
  * During development `npm run dev` runs Vite with hot reload and proxies
  * /api to this server.
  *
@@ -38,7 +41,7 @@ const { publicDefaults, resolveConnection, poolFor } = require('./lib/connection
 
 const PORT = process.env.PORT || 4440;
 const HOST = process.env.HOST || '0.0.0.0';
-const PUBLIC_DIR = path.join(__dirname, 'dist');
+const PUBLIC_DIR = process.env.ERD_PUBLIC_DIR || path.join(__dirname, 'dist');
 
 const DATABASES_QUERY = `
   select datname
@@ -61,15 +64,12 @@ function sendJson(res, statusCode, payload) {
   res.end(body);
 }
 
-/* CORS: only the desktop app (a Tauri/Pake WebView page) may call the API
-   cross-origin. Allowing any origin would let any website you visit read
-   your schemas through this server. Add more with CORS_ORIGINS=a,b. */
-const CORS_ORIGINS = new Set([
-  'tauri://localhost',
-  'http://tauri.localhost',
-  'https://tauri.localhost',
-  ...(process.env.CORS_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean),
-]);
+/* CORS: cross-origin API calls are refused unless the origin is listed in
+   CORS_ORIGINS=a,b. Allowing any origin would let any website you visit
+   read your schemas through this server. */
+const CORS_ORIGINS = new Set(
+  (process.env.CORS_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean),
+);
 
 function applyCors(req, res) {
   const origin = req.headers.origin;
@@ -207,8 +207,9 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
+  const { port } = server.address();
   const lanIp = Object.values(os.networkInterfaces())
     .flat()
     .find((i) => i.family === 'IPv4' && !i.internal)?.address;
-  console.log(`ERD viewer running at http://localhost:${PORT}${lanIp ? ` (LAN: http://${lanIp}:${PORT})` : ''}`);
+  console.log(`ERD viewer running at http://localhost:${port}${lanIp && HOST !== '127.0.0.1' ? ` (LAN: http://${lanIp}:${port})` : ''}`);
 });

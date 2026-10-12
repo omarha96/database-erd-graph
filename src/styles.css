@@ -344,6 +344,11 @@ button { color: var(--fb-text); font: inherit; }
   transform: translate(-50%, 0);
   transition-delay: .25s;
 }
+/* The connection button sits at the toolbar's left edge: anchor its
+   tooltip left so it doesn't run off-screen. */
+#zoom-controls .tool-group:first-child > button:first-child::after { left: 0; transform: translateY(4px); }
+#zoom-controls .tool-group:first-child > button:first-child:hover::after,
+#zoom-controls .tool-group:first-child > button:first-child:focus-visible::after { transform: none; }
 
 /* ---------- Hold Ctrl: names-only map preview ----------
    Every table keeps its exact box and position; its contents fade out

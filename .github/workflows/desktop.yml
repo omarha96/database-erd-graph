@@ -1,9 +1,6 @@
-# To enable: move this file to .github/workflows/desktop.yml (e.g. via
-# "Add file" on GitHub, or locally with git mv and push from your machine).
-#
-# Builds the ERD Viewer desktop app with Pake (Tauri) for Linux, Windows
-# and macOS. Pake can only build for the OS it runs on, so each platform
-# gets its own native runner.
+# Builds the ERD Viewer desktop app (Tauri + the bundled Node backend, see
+# desktop/) for Linux, Windows and macOS. Each platform builds on its own
+# native runner.
 #
 # Run it from the Actions tab ("Run workflow"), or push a tag like v2.0.0
 # to also attach the installers to a GitHub release.
@@ -24,48 +21,40 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            args: --targets deb
           - os: windows-latest
-            args: --targets x64
           - os: macos-latest
-            args: --multi-arch
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26 # --build-sea (single executable) needs Node 25.5+
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - uses: swatinem/rust-cache@v2
         with:
-          workspaces: node_modules/pake-cli/src-tauri
+          workspaces: desktop/src-tauri
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libssl-dev librsvg2-dev libxdo-dev
 
       - run: npm ci
 
-      - name: Build the desktop bundle
+      - name: Build the desktop app
         env:
           DATABASE_URL: ''
           PGPASSWORD: ''
-        run: npm run build:desktop
+        run: npm run desktop
 
-      - name: Package with Pake
+      - name: Collect installers
         shell: bash
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          npx pake ./dist-desktop --config desktop/pake.json --app-version "$VERSION" ${{ matrix.args }} --json > pake-result.json
-          cat pake-result.json
+        run: find desktop/src-tauri/target/release/bundle \( -name '*.deb' -o -name '*.dmg' -o -name '*.exe' \) -exec cp {} . \;
 
       - uses: actions/upload-artifact@v4
         with:
@@ -73,7 +62,6 @@ jobs:
           path: |
             *.deb
             *.dmg
-            *.msi
             *.exe
           if-no-files-found: error
 
@@ -84,5 +72,4 @@ jobs:
           files: |
             *.deb
             *.dmg
-            *.msi
             *.exe

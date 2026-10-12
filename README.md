@@ -87,8 +87,8 @@ app takes precedence, and blank fields fall back to them.
 - **Only run the server where you trust the network.** It connects to whatever
   database server the app asks for and returns schema information. It listens
   on all interfaces by default; set `HOST=127.0.0.1` to keep it local.
-  Cross-origin API calls are only accepted from the desktop app, so other
-  websites you visit can't use it.
+  Cross-origin API calls are refused (unless listed in `CORS_ORIGINS`), so
+  other websites you visit can't use it.
 
 ## Using the viewer
 
@@ -108,33 +108,31 @@ app takes precedence, and blank fields fall back to them.
 
 ## Desktop app
 
-The viewer can be packaged as a lightweight native app for Linux, Windows and
-macOS with [Pake](https://github.com/tw93/Pake) (Tauri and the system
-WebView, about 5–10 MB).
+The desktop app is one installer per platform (`.deb` on Linux, `.exe` setup
+on Windows, `.dmg` on macOS) with the backend built in: no separate server
+to run. It is a [Tauri](https://tauri.app) app that uses the system WebView
+(no bundled Chromium). On launch it starts `server.js`, compiled into a
+standalone Node executable, on a private `127.0.0.1` port that the LAN
+can't reach, and opens its window on it. The Node runtime accounts for most
+of the size (about 50 MB download).
 
-The desktop app contains the frontend only. The sample diagram, layout,
-import/export and PNG/PDF export work offline. To browse databases it needs
-the server running somewhere (`npm start`); it looks for it at
-`http://localhost:4440`, which you can change under **App server** in the
-connection menu.
+**Build on GitHub (all platforms).** `.github/workflows/desktop.yml` builds
+all three installers. Run **Desktop apps** from the Actions tab, or push a
+tag like `v2.0.0` to attach the installers to a release.
 
-**Build on GitHub (all platforms).** `desktop/desktop-workflow.yml` is a
-GitHub Actions workflow that builds a `.deb` and `.AppImage` (Linux), an
-`.msi` (Windows) and a universal `.dmg` (macOS). To enable it, move it to
-`.github/workflows/desktop.yml`. Then run **Desktop apps** from the Actions
-tab, or push a tag like `v2.0.0` to attach the installers to a release.
-
-**Build locally (your own OS only).** Install [Rust](https://rustup.rs) and
-the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your
-platform (on Debian/Ubuntu: `libwebkit2gtk-4.1-dev libssl-dev
-libayatana-appindicator3-dev librsvg2-dev libxdo-dev`), then run:
+**Build locally (your own OS only).** Install Node 25.5+ (for
+`--build-sea`), [Rust](https://rustup.rs) and the
+[Tauri prerequisites](https://tauri.app/start/prerequisites/) for your
+platform (on Debian/Ubuntu: `pkg-config libwebkit2gtk-4.1-dev libssl-dev
+librsvg2-dev libxdo-dev`), then run:
 
 ```bash
 npm run desktop
 ```
 
-The first build compiles Tauri and can take ten minutes or more. App settings
-(name, window size, icon) are in `desktop/pake.json`.
+The installer lands in `desktop/src-tauri/target/release/bundle/`. The first
+build compiles Tauri and can take ten minutes or more. App settings (name,
+window size, icon) are in `desktop/src-tauri/`.
 
 The installers are not code-signed, so Windows and macOS show a warning the
 first time the app is opened.
@@ -153,8 +151,7 @@ reload on <http://localhost:5173>.
 | `npm run dev` | API server and Vite dev server |
 | `npm run build` | Production frontend into `dist/` |
 | `npm start` | Serve `dist/` and the API on port 4440 |
-| `npm run build:desktop` | Desktop frontend into `dist-desktop/` |
-| `npm run desktop` | Build and package the desktop app with Pake |
+| `npm run desktop` | Build the desktop app installer (Tauri + bundled backend) |
 
 ### Project layout
 
@@ -172,7 +169,7 @@ reload on <http://localhost:5173>.
 │   ├── pdfExport.js     Vector PDF export
 │   ├── capture.js       PNG export
 │   └── ...              Toolbar, menus, connection client, sample schema
-├── desktop/             Pake config, app icon, GitHub Actions workflow
+├── desktop/             Tauri app (src-tauri/), backend sidecar build, app icon
 └── vite.config.mjs      Build config, including the credential guard
 ```
 
@@ -205,4 +202,4 @@ blank fields fall back to `.env`. `GET /api/databases` and
 - Text in the PDF export is set in
   [Space Grotesk](https://github.com/floriankarsten/space-grotesk)
   (SIL Open Font License 1.1, see `src/assets/fonts/OFL.txt`).
-- Desktop packaging by [Pake](https://github.com/tw93/Pake).
+- Desktop packaging by [Tauri](https://tauri.app).

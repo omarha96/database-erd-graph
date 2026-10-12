@@ -6,14 +6,15 @@ tmp/
 .env
 .env.*
 !.env.example
-!.env.desktop
 
 # Build output
 dist/
-dist-desktop/
 *.AppImage
 *.deb
 *.rpm
 *.dmg
 *.msi
 *.exe
+desktop/src-tauri/target/
+desktop/src-tauri/binaries/
+desktop/sea/
