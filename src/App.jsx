@@ -6,6 +6,7 @@ import {
 import TableNode from './TableNode.jsx';
 import RelationEdge from './RelationEdge.jsx';
 import EdgeMarkers from './EdgeMarkers.jsx';
+import HoverLabel from './HoverLabel.jsx';
 import Toolbar from './Toolbar.jsx';
 import { GroupMenu, ReferencesMenu } from './Menus.jsx';
 import { ErdActions } from './ErdActions.js';
@@ -82,6 +83,14 @@ export default function App() {
 
   const edges = useMemo(() => buildEdges(schema), [schema]);
   const groups = useMemo(() => computeGroups(schema), [schema]);
+  const tableStats = useMemo(() => {
+    const stats = new Map(schema.tables.map((t) => [t.name, { columns: t.columns.length, relations: 0 }]));
+    for (const r of schema.relationships) {
+      stats.get(r.source).relations++;
+      if (r.target !== r.source) stats.get(r.target).relations++;
+    }
+    return stats;
+  }, [schema]);
   const hiddenTables = useMemo(
     () => new Set(groups.filter((g) => hiddenGroups.has(g.id)).flatMap((g) => g.tables)),
     [groups, hiddenGroups],
@@ -101,6 +110,7 @@ export default function App() {
     setSource(nextSource);
     setHiddenGroups(new Set());
     setRefsMenu(null);
+    setHoveredTable(null);
     setNodes(normalized.tables.map((t) => {
       const { width, height } = tableSize(t);
       return {
@@ -279,6 +289,7 @@ export default function App() {
             <MiniMap pannable zoomable nodeColor="var(--erd-header)" nodeBorderRadius={4} className="erd-minimap" />
           </ReactFlow>
         </ErdActions.Provider>
+        <HoverLabel stats={tableStats} />
         {source.kind === 'sample' && (
           <div id="placeholder-banner">Sample data — not a real schema. Pick a database below to load your actual tables.</div>
         )}

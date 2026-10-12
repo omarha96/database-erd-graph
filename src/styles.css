@@ -285,3 +285,23 @@ button { color: var(--fb-text); font: inherit; }
   .tool-group { padding: 0 6px; }
   #hint { display: none; }
 }
+
+/* ---------- Hovered-table label ---------- */
+#hover-label {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: calc(100% - 24px - 220px);
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: var(--fb-surface2);
+  border: 1px solid var(--erd-accent);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+  pointer-events: none;
+}
+#hover-label .hover-name { font-size: 14px; font-weight: 700; color: var(--erd-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#hover-label .hover-meta { font-size: 11px; color: var(--fb-text-sec); }
