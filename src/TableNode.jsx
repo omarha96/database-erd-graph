@@ -2,6 +2,7 @@ import { memo, useContext } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { useHighlight } from './highlightStore.js';
 import { ErdActions } from './ErdActions.js';
+import { displayName } from './previewFont.js';
 
 /* One database table. Edges are drawn by RelationEdge, which anchors to
    individual rows using the fixed row height from model.js, so the two
@@ -19,10 +20,7 @@ function TableNode({ data, selected }) {
       <Handle type="target" position={Position.Left} className="erd-handle" isConnectable={false} />
       <Handle type="source" position={Position.Right} className="erd-handle" isConnectable={false} />
       <div className="erd-table-header" title={table.name}>{table.name}</div>
-      <div className="erd-table-preview" aria-hidden="true"><span>
-        {/* Let long snake_case names wrap after underscores, not mid-word. */}
-        {table.name.split(/(?<=_)/).map((part, i) => <span key={i}>{i > 0 && <wbr />}{part}</span>)}
-      </span></div>
+      <div className="erd-table-preview" aria-hidden="true"><span>{displayName(table.name)}</span></div>
       {table.columns.map((col) => {
         const fkLink = !!col.ref;
         const pkLink = col.pk && referencedColumns.has(col.name);

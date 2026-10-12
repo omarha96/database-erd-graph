@@ -176,3 +176,5 @@ export function toMysqlDDL(schema) {
   }
   return statements.join('\n\n') + '\n';
 }
+
+export const edgeId = (r) => `${r.source}.${r.sourceColumn}->${r.target}.${r.targetColumn}`;

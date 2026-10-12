@@ -13,7 +13,7 @@ import { GroupMenu, ReferencesMenu } from './Menus.jsx';
 import { ErdActions } from './ErdActions.js';
 import { flashTable, setHoveredTable } from './highlightStore.js';
 import { layoutTables } from './layout.js';
-import { computeGroups, normalizeSchema, parseMermaidSchema, tableSize, toMysqlDDL } from './model.js';
+import { computeGroups, edgeId, normalizeSchema, parseMermaidSchema, tableSize, toMysqlDDL } from './model.js';
 import { sampleSchema } from './sampleSchema.js';
 
 const nodeTypes = { table: TableNode };
@@ -36,6 +36,16 @@ function writePositions(source, nodes) {
 function clearPositions(source) {
   try { localStorage.removeItem(positionsKey(source)); } catch { /* ignore */ }
 }
+// ELK's edge routes from the last tidy layout. Each route remembers the
+// table positions it was made for, so RelationEdge ignores it once
+// either end has been dragged.
+const routesKey = (source) => `erd-routes:${source.kind}:${source.name}`;
+function readRoutes(source) {
+  try { return JSON.parse(localStorage.getItem(routesKey(source))) || {}; } catch { return {}; }
+}
+function writeRoutes(source, routes) {
+  try { localStorage.setItem(routesKey(source), JSON.stringify(routes)); } catch { /* ignore */ }
+}
 
 function download(filename, content, type) {
   const url = URL.createObjectURL(new Blob([content], { type }));
@@ -52,10 +62,10 @@ function setDbQueryParam(name) {
   window.history.replaceState(null, '', url);
 }
 
-function buildEdges(schema) {
+function buildEdges(schema, routes) {
   const rowIndex = new Map(schema.tables.map((t) => [t.name, new Map(t.columns.map((c, i) => [c.name, i]))]));
   return schema.relationships.map((r) => ({
-    id: `${r.source}.${r.sourceColumn}->${r.target}.${r.targetColumn}`,
+    id: edgeId(r),
     type: 'relation',
     source: r.source,
     target: r.target,
@@ -64,6 +74,7 @@ function buildEdges(schema) {
       sourceRow: rowIndex.get(r.source).get(r.sourceColumn) ?? 0,
       targetRow: rowIndex.get(r.target).get(r.targetColumn) ?? 0,
       label: r.sourceColumn,
+      route: routes[edgeId(r)],
     },
   }));
 }
@@ -82,7 +93,8 @@ export default function App() {
   const sourceRef = useRef(source);
   sourceRef.current = source;
 
-  const edges = useMemo(() => buildEdges(schema), [schema]);
+  const [routes, setRoutes] = useState({});
+  const edges = useMemo(() => buildEdges(schema, routes), [schema, routes]);
   const groups = useMemo(() => computeGroups(schema), [schema]);
   const tableStats = useMemo(() => {
     const stats = new Map(schema.tables.map((t) => [t.name, { columns: t.columns.length, relations: 0 }]));
@@ -102,12 +114,16 @@ export default function App() {
     const normalized = normalizeSchema(nextSchema);
     const saved = presetPositions || readPositions(nextSource);
     const missing = normalized.tables.some((t) => !saved[t.name]);
-    const auto = missing ? await layoutTables(normalized.tables, normalized.relationships) : {};
+    const layout = missing ? await layoutTables(normalized.tables, normalized.relationships) : null;
+    const auto = layout?.positions || {};
+    const nextRoutes = layout ? layout.routes : presetPositions ? {} : readRoutes(nextSource);
+    if (layout && !presetPositions) writeRoutes(nextSource, nextRoutes);
 
     const referenced = new Map(normalized.tables.map((t) => [t.name, new Set()]));
     for (const r of normalized.relationships) referenced.get(r.target).add(r.targetColumn);
 
     setSchema(normalized);
+    setRoutes(nextRoutes);
     setSource(nextSource);
     setHiddenGroups(new Set());
     setRefsMenu(null);
@@ -129,8 +145,10 @@ export default function App() {
 
   const relayout = useCallback(async () => {
     const visible = schema.tables.filter((t) => !hiddenTables.has(t.name));
-    const positions = await layoutTables(visible, schema.relationships);
+    const { positions, routes: nextRoutes } = await layoutTables(visible, schema.relationships);
     clearPositions(source);
+    writeRoutes(source, nextRoutes);
+    setRoutes(nextRoutes);
     setNodes((ns) => ns.map((n) => (positions[n.id] ? { ...n, position: positions[n.id] } : n)));
     requestAnimationFrame(() => fitView({ padding: 0.12, maxZoom: 1.5, duration: 400 }));
   }, [schema, hiddenTables, source, setNodes, fitView]);
@@ -277,7 +295,7 @@ export default function App() {
     [namesPreview, fitMax],
   );
   useEffect(() => {
-    const HOLD_MS = 350;
+    const HOLD_MS = 180;
     let timer;
     const cancel = () => { clearTimeout(timer); timer = undefined; setNamesPreview(false); };
     const down = (e) => {

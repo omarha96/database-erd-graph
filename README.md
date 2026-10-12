@@ -61,7 +61,9 @@ npm start       # serve ./dist + API on http://localhost:4440 (set PORT to chang
   and show just their name, sized to stay readable at the current zoom.
 - **Drag tables** to arrange them. Positions are saved per database in
   `localStorage` and restored on reload. **Auto Layout** discards them
-  and re-runs ELK on the visible tables.
+  and re-runs ELK on the visible tables. ELK pins each relationship to
+  its column rows and routes it in its own lane, so lines don't overlap;
+  lines attached to a table you drag afterwards are re-routed on the fly.
 - Scroll to zoom, drag the background (or arrow keys) to pan, pinch on touch.
   `+` / `-` zoom, `0` fits the diagram. The minimap is draggable too.
 - Hover or select a table to highlight its relationships and see the FK

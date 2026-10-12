@@ -10,9 +10,12 @@ export const PREVIEW_PADDING = 14;
 export const PREVIEW_LINE_HEIGHT = 1.15;
 const PREVIEW_FONT = "600 100px 'Space Grotesk Variable', system-ui, sans-serif";
 const TARGET_SCREEN_PX = 14;
-const MAX_LINES = 2;
-// Breaking only at underscores never fills lines perfectly.
-const WRAP_EFFICIENCY = 0.85;
+const MAX_LINES = 3;
+// Word wrapping never fills lines perfectly.
+const WRAP_EFFICIENCY = 0.8;
+
+// snake_case table names read better as words in the map preview.
+export const displayName = (name) => name.replace(/_+/g, ' ').trim() || name;
 
 let ctx;
 function textWidthAt100(text) {
@@ -26,15 +29,16 @@ export function maxFittingFontSize(nodes) {
   let max = Infinity;
   for (const n of nodes) {
     if (n.hidden) continue;
-    const name = n.data.table.name;
+    const name = displayName(n.data.table.name);
     const innerW = n.width - PREVIEW_PADDING * 2;
     const innerH = n.height - PREVIEW_PADDING * 2;
     const w100 = textWidthAt100(name);
-    // A name with no underscores can't wrap, so it must fit on one line.
-    const lines = name.includes('_') ? MAX_LINES : 1;
+    // A single word can't wrap, so it must fit on one line.
+    const words = name.split(' ');
+    const lines = Math.min(MAX_LINES, words.length);
     const byWidth = (innerW * lines * (lines > 1 ? WRAP_EFFICIENCY : 1) * 100) / w100;
-    // The longest underscore-free segment must fit on a line by itself.
-    const longestSegment = Math.max(...name.split('_').map((s, i, a) => textWidthAt100(s + (i < a.length - 1 ? '_' : ''))));
+    // The longest word must fit on a line by itself.
+    const longestSegment = Math.max(...words.map(textWidthAt100));
     const bySegment = (innerW * 100) / longestSegment;
     const byHeight = innerH / (lines * PREVIEW_LINE_HEIGHT);
     max = Math.min(max, byWidth, bySegment, byHeight);

@@ -370,7 +370,7 @@ button { color: var(--fb-text); font: inherit; }
   word-break: normal;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
   overflow: hidden;
 }
 .names-preview .erd-table-preview { opacity: 1; visibility: visible; transition: opacity .2s ease; }
