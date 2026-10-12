@@ -2,3 +2,9 @@ node_modules/
 .env
 tmp/
 dist/
+dist-desktop/
+*.AppImage
+*.deb
+*.dmg
+*.msi
+*.exe

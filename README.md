@@ -10,7 +10,8 @@ connectivity grouping, light/dark themes, and JSON / MySQL export.
 ├── server.js            # serves ./dist + GET /api/schema, GET /api/databases
 ├── lib/schema.js        # Postgres introspection → { tables, relationships } (pure, unit-testable)
 ├── index.html           # Vite entry
-├── vite.config.mjs      # dev server proxies /api to server.js
+├── vite.config.mjs      # dev server proxies /api to server.js; `--mode desktop` for Pake
+├── desktop/             # Pake config + app icon
 └── src/
     ├── App.jsx          # canvas, data loading, FK navigation, export/import, keyboard
     ├── TableNode.jsx    # one table (memoized custom node)
@@ -58,6 +59,34 @@ npm run dev     # API on :4440 + Vite with hot reload on http://localhost:5173
 npm run build   # production bundle into ./dist
 npm start       # serve ./dist + API on http://localhost:4440 (set PORT to change)
 ```
+
+## Desktop app (Pake)
+
+The viewer can be packaged as a small native app (~5–10 MB, Tauri +
+the system WebView) for Linux, Windows and macOS with
+[Pake](https://github.com/tw93/Pake).
+
+The desktop app is the static frontend only: sample data, layout,
+import/export, PNG and PDF all work offline. To browse Postgres it talks to
+`server.js` running somewhere (`npm start`, default
+`http://localhost:4440`); change that address under **App server** in the
+connection menu. The server only accepts cross-origin calls from the
+desktop app's origins (`tauri://localhost`, `http(s)://tauri.localhost`,
+plus any in `CORS_ORIGINS`), so other websites can't use it.
+
+- **All platforms:** move `desktop/desktop-workflow.yml` to
+  `.github/workflows/desktop.yml` once (it lives outside that folder only
+  because the tool that wrote it could not push workflow files), then run
+  the *Desktop apps* workflow from the GitHub Actions tab (or push a `v*` tag to attach the installers to a release).
+  It builds `.deb` + `.AppImage` (Linux), `.msi` (Windows) and a universal
+  `.dmg` (macOS) on native runners.
+- **Locally** (builds for your own OS only): install
+  [Rust](https://rustup.rs) and, on Linux,
+  `libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev`,
+  then `npm run desktop`. The first build compiles Tauri and takes a while.
+
+Settings live in `desktop/pake.json`; `.env.desktop` sets the default app
+server address.
 
 ## Schema shape
 
