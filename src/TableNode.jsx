@@ -19,6 +19,10 @@ function TableNode({ data, selected }) {
       <Handle type="target" position={Position.Left} className="erd-handle" isConnectable={false} />
       <Handle type="source" position={Position.Right} className="erd-handle" isConnectable={false} />
       <div className="erd-table-header" title={table.name}>{table.name}</div>
+      <div className="erd-table-preview" aria-hidden="true"><span>
+        {/* Let long snake_case names wrap after underscores, not mid-word. */}
+        {table.name.split(/(?<=_)/).map((part, i) => <span key={i}>{i > 0 && <wbr />}{part}</span>)}
+      </span></div>
       {table.columns.map((col) => {
         const fkLink = !!col.ref;
         const pkLink = col.pk && referencedColumns.has(col.name);

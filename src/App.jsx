@@ -259,11 +259,34 @@ export default function App() {
   };
   const zoom = useStore((s) => s.transform[2]);
 
+  /* ---------- Hold Ctrl: names-only map preview ---------- */
+  const [namesPreview, setNamesPreview] = useState(false);
+  useEffect(() => {
+    const down = (e) => { if (e.key === 'Control' && !e.repeat) setNamesPreview(true); };
+    const up = (e) => { if (e.key === 'Control') setNamesPreview(false); };
+    const off = () => setNamesPreview(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', off);
+    document.addEventListener('visibilitychange', off);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', off);
+      document.removeEventListener('visibilitychange', off);
+    };
+  }, []);
+
   return (
     <div id="erd-wrap" data-view-mode={source.kind === 'sample' ? 'placeholder' : 'live'}>
       <h1 className="sr-only">Database ERD viewer</h1>
       <EdgeMarkers />
-      <div id="erd-viewport" ref={viewportRef}>
+      <div
+        id="erd-viewport"
+        ref={viewportRef}
+        className={namesPreview ? 'names-preview' : undefined}
+        style={{ '--inv-zoom': 1 / zoom }}
+      >
         <ErdActions.Provider value={actions}>
           <ReactFlow
             nodes={nodes}
@@ -314,7 +337,7 @@ export default function App() {
         disabled={!!loading}
       />
       <div id="hint">
-        drag tables to arrange · scroll to zoom · drag background or arrow keys to pan · click an FK to jump · click a referenced PK for reverse relations · press 0 to fit
+        drag tables to arrange · hold Ctrl for a names-only map · scroll to zoom · drag background or arrow keys to pan · click an FK to jump · click a referenced PK for reverse relations · press 0 to fit
       </div>
 
       {groupMenuAnchor && (

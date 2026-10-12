@@ -57,6 +57,8 @@ npm start       # serve ./dist + API on http://localhost:4440 (set PORT to chang
 
 ## Controls
 
+- Hold **Ctrl** for a names-only preview of the map: tables stay in place
+  and show just their name, sized to stay readable at the current zoom.
 - **Drag tables** to arrange them. Positions are saved per database in
   `localStorage` and restored on reload. **Auto Layout** discards them
   and re-runs ELK on the visible tables.
