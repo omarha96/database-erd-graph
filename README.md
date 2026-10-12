@@ -1,128 +1,208 @@
 # ERD Viewer
 
-An interactive ER-diagram viewer for Postgres schemas. Tables are
-draggable React Flow nodes, auto-arranged with ELK, with FK navigation,
-connectivity grouping, light/dark themes, and JSON / MySQL export.
+An interactive entity-relationship diagram viewer for PostgreSQL. Point it at
+a database and it draws every table, column and foreign key as a diagram you
+can rearrange, explore and export.
 
-## Structure
+- **Auto-layout** with [ELK](https://eclipse.dev/elk/): relationship lines are
+  routed in their own lanes, so they don't overlap each other or cut through
+  tables. A spacing control makes the layout tighter or sparser.
+- **Draggable tables**: arrange them by hand and the positions are remembered
+  per database.
+- **Explore**: click a foreign key to jump to the table it references, click a
+  primary key to list everything that references it, hover a table to
+  highlight its relationships, hold <kbd>Ctrl</kbd> for a names-only overview
+  of the whole map.
+- **Group tables** into clusters of tightly connected tables and hide the ones
+  you don't need.
+- **Export** a PNG of the current view, a vector PDF of the whole diagram
+  (sharp at any zoom, with selectable text), JSON (schema + layout) or a MySQL
+  `.sql` script. JSON exports can be imported again.
+- **Remote servers**: connect to any Postgres server from the app, including
+  hosted databases over SSL.
+- Light and dark themes, and a **desktop app** for Linux, Windows and macOS.
 
-```
-├── server.js            # serves ./dist + GET /api/schema, GET /api/databases
-├── lib/schema.js        # Postgres introspection → { tables, relationships } (pure, unit-testable)
-├── index.html           # Vite entry
-├── vite.config.mjs      # dev server proxies /api to server.js; `--mode desktop` for Pake
-├── desktop/             # Pake config + app icon
-└── src/
-    ├── App.jsx          # canvas, data loading, FK navigation, export/import, keyboard
-    ├── TableNode.jsx    # one table (memoized custom node)
-    ├── RelationEdge.jsx # FK edge anchored to the exact column rows, crow's-foot markers
-    ├── layout.js        # ELK layered layout, run in a Web Worker
-    ├── model.js         # table sizes, connectivity groups, MySQL DDL, legacy import
-    ├── highlightStore.js# hover/flash state with per-node subscriptions
-    ├── Toolbar.jsx / Menus.jsx / EdgeMarkers.jsx
-    └── sampleSchema.js  # obviously-fake sample schema shown before a DB is picked
-```
+Built with [React Flow](https://reactflow.dev), ELK and [Vite](https://vite.dev),
+with a small Node.js server for database access.
 
-## Setup
+## Requirements
+
+- Node.js 18 or newer
+- Network access to a PostgreSQL server (any recent version) with a user that
+  can read `information_schema` for the schema you want to view
+
+## Getting started
 
 ```bash
+git clone https://github.com/omarha96/database-erd-graph.git
+cd database-erd-graph
 npm install
-cp .env.example .env   # optional: default connection settings
+npm run build
+npm start
 ```
 
-## Connecting to Postgres
+Open <http://localhost:4440>. A sample schema is shown until you connect to a
+database.
 
-Click the **server icon** at the left of the toolbar to open the
-connection menu: enter a server (`host`, `host:port`, or a full
-`postgres://user:pass@host:port/db?sslmode=require` URL), username and
-password, tick **Use SSL** for hosted databases, and press **Connect**.
-The database dropdown then lists that server's databases. A red dot on
-the icon means there is no working connection yet.
+To connect, click the **server icon** at the left of the toolbar, enter the
+server, username and password, and press **Connect**. The dropdown next to it
+then lists the server's databases; pick one to load its schema.
 
-- `.env` (`DATABASE_URL` or `PG*` variables, see `.env.example`) only
-  provides **defaults** that prefill the menu; any field left blank falls
-  back to it.
-- The `.env` password is never sent to the browser, and is only used when
-  connecting to the `.env` server as the `.env` user, so it can't be
-  handed to some other server.
-- Server, username and SSL are remembered in the browser; passwords are
-  not, so after a reload you re-enter the password for non-`.env`
-  servers.
-- The server connects to whatever host you enter, so only expose the app
-  (it listens on `0.0.0.0` by default, set `HOST=127.0.0.1` to restrict
-  it) on networks you trust.
+The server field accepts `host`, `host:port`, or a full connection URL such as
+`postgres://user@db.example.com:5432/mydb?sslmode=require`. Tick **Use SSL**
+for hosted databases (it encrypts the connection without verifying the
+server's certificate, like `sslmode=require`).
 
-## Run it
+## Configuration
+
+Configuration is optional. To set defaults, copy `.env.example` to `.env` and
+edit it:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `4440` | HTTP port |
+| `HOST` | `0.0.0.0` | Bind address; use `127.0.0.1` to accept local connections only |
+| `DATABASE_URL` | – | Default connection as one URL (takes priority over `PG*`) |
+| `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` | `localhost`, `5432`, `postgres`, –, `postgres` | Default connection, in parts |
+| `PGSSLMODE` | – | `require` to connect with SSL by default |
+| `PGSCHEMA` | `public` | Schema to introspect |
+| `CORS_ORIGINS` | – | Extra origins allowed to call the API cross-origin (comma-separated) |
+
+These values only **prefill** the connection menu; anything entered in the
+app takes precedence, and blank fields fall back to them.
+
+## Security
+
+- **Keep credentials in `.env`.** It is git-ignored, so it isn't committed or
+  included in builds. Don't put credentials in any `VITE_*` variable:
+  those are compiled into the frontend, and the build refuses to run if one
+  looks like a secret, or if a database password from the environment ends up
+  in the bundle.
+- **The `.env` password never reaches the browser.** The app only learns
+  whether one is set. It is used only when connecting to the `.env` server as
+  the `.env` user, so it can't be redirected to another server.
+- **Passwords typed into the app are not stored.** The server, username and
+  SSL setting are remembered in the browser; the password has to be entered
+  again after a reload.
+- **Only run the server where you trust the network.** It connects to whatever
+  database server the app asks for and returns schema information. It listens
+  on all interfaces by default; set `HOST=127.0.0.1` to keep it local.
+  Cross-origin API calls are only accepted from the desktop app, so other
+  websites you visit can't use it.
+
+## Using the viewer
+
+| Action | How |
+| --- | --- |
+| Pan | Drag the background, or arrow keys |
+| Zoom | Scroll wheel, pinch, or <kbd>+</kbd> / <kbd>-</kbd> |
+| Fit the diagram to the screen | <kbd>0</kbd> or the fit button |
+| Move a table | Drag it; positions are saved per database |
+| Re-arrange everything | **Auto layout** button (discards manual positions) |
+| Tighter / sparser layout | The two arrow buttons; re-arranges the tables |
+| Go to a referenced table | Click an underlined foreign-key column |
+| See what references a key | Click a dotted-underlined primary-key column |
+| Highlight a table's relationships | Hover or select the table |
+| Names-only overview | Hold <kbd>Ctrl</kbd> |
+| Show or hide clusters | **Group tables** button |
+
+## Desktop app
+
+The viewer can be packaged as a lightweight native app for Linux, Windows and
+macOS with [Pake](https://github.com/tw93/Pake) (Tauri and the system
+WebView, about 5–10 MB).
+
+The desktop app contains the frontend only. The sample diagram, layout,
+import/export and PNG/PDF export work offline. To browse databases it needs
+the server running somewhere (`npm start`); it looks for it at
+`http://localhost:4440`, which you can change under **App server** in the
+connection menu.
+
+**Build on GitHub (all platforms).** `desktop/desktop-workflow.yml` is a
+GitHub Actions workflow that builds a `.deb` and `.AppImage` (Linux), an
+`.msi` (Windows) and a universal `.dmg` (macOS). To enable it, move it to
+`.github/workflows/desktop.yml`. Then run **Desktop apps** from the Actions
+tab, or push a tag like `v2.0.0` to attach the installers to a release.
+
+**Build locally (your own OS only).** Install [Rust](https://rustup.rs) and
+the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your
+platform (on Debian/Ubuntu: `libwebkit2gtk-4.1-dev libssl-dev
+libayatana-appindicator3-dev librsvg2-dev libxdo-dev`), then run:
 
 ```bash
-npm run dev     # API on :4440 + Vite with hot reload on http://localhost:5173
-npm run build   # production bundle into ./dist
-npm start       # serve ./dist + API on http://localhost:4440 (set PORT to change)
+npm run desktop
 ```
 
-## Desktop app (Pake)
+The first build compiles Tauri and can take ten minutes or more. App settings
+(name, window size, icon) are in `desktop/pake.json`.
 
-The viewer can be packaged as a small native app (~5–10 MB, Tauri +
-the system WebView) for Linux, Windows and macOS with
-[Pake](https://github.com/tw93/Pake).
+The installers are not code-signed, so Windows and macOS show a warning the
+first time the app is opened.
 
-The desktop app is the static frontend only: sample data, layout,
-import/export, PNG and PDF all work offline. To browse Postgres it talks to
-`server.js` running somewhere (`npm start`, default
-`http://localhost:4440`); change that address under **App server** in the
-connection menu. The server only accepts cross-origin calls from the
-desktop app's origins (`tauri://localhost`, `http(s)://tauri.localhost`,
-plus any in `CORS_ORIGINS`), so other websites can't use it.
+## Development
 
-- **All platforms:** move `desktop/desktop-workflow.yml` to
-  `.github/workflows/desktop.yml` once (it lives outside that folder only
-  because the tool that wrote it could not push workflow files), then run
-  the *Desktop apps* workflow from the GitHub Actions tab (or push a `v*` tag to attach the installers to a release).
-  It builds `.deb` + `.AppImage` (Linux), `.msi` (Windows) and a universal
-  `.dmg` (macOS) on native runners.
-- **Locally** (builds for your own OS only): install
-  [Rust](https://rustup.rs) and, on Linux,
-  `libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev`,
-  then `npm run desktop`. The first build compiles Tauri and takes a while.
+```bash
+npm run dev
+```
 
-Settings live in `desktop/pake.json`; `.env.desktop` sets the default app
-server address.
+This starts the API server on port 4440 and the Vite dev server with hot
+reload on <http://localhost:5173>.
 
-## Schema shape
+| Script | What it does |
+| --- | --- |
+| `npm run dev` | API server and Vite dev server |
+| `npm run build` | Production frontend into `dist/` |
+| `npm start` | Serve `dist/` and the API on port 4440 |
+| `npm run build:desktop` | Desktop frontend into `dist-desktop/` |
+| `npm run desktop` | Build and package the desktop app with Pake |
 
-`POST /api/schema` with `{ connection: { server, user, password, ssl }, database, schema }`
-(or `GET /api/schema?database=<name>` using `.env` only) returns:
+### Project layout
+
+```
+├── server.js            HTTP server: static files and the /api routes
+├── lib/
+│   ├── schema.js        Postgres introspection → tables and relationships
+│   └── connection.js    Connection settings (.env defaults) and pool cache
+├── src/
+│   ├── App.jsx          Canvas, loading, navigation, export/import, keyboard
+│   ├── TableNode.jsx    A table on the canvas
+│   ├── RelationEdge.jsx A foreign-key line, anchored to its column rows
+│   ├── layout.js        ELK layout and edge routing (in a Web Worker)
+│   ├── model.js         Table sizes, grouping, MySQL export, legacy import
+│   ├── pdfExport.js     Vector PDF export
+│   ├── capture.js       PNG export
+│   └── ...              Toolbar, menus, connection client, sample schema
+├── desktop/             Pake config, app icon, GitHub Actions workflow
+└── vite.config.mjs      Build config, including the credential guard
+```
+
+### API
+
+| Route | Description |
+| --- | --- |
+| `GET /api/connection` | The default connection settings from `.env` (never the password) |
+| `POST /api/databases` | List the databases on a server |
+| `POST /api/schema` | Introspect one database |
+
+`POST` bodies look like
+`{ "connection": { "server", "user", "password", "ssl" }, "database", "schema" }`;
+blank fields fall back to `.env`. `GET /api/databases` and
+`GET /api/schema?database=<name>` use `.env` only.
+
+`/api/schema` returns:
 
 ```js
 {
   tables: [{ name, columns: [{ name, type, pk, fk, ref?: { table, column } }] }],
   relationships: [{ source, sourceColumn, target, targetColumn }], // source = referencing table
-  diagram, fkTargets, tableCount, relationshipCount,               // legacy Mermaid form, kept for compatibility
+  tableCount, relationshipCount,
+  diagram, fkTargets, // the same schema as a Mermaid erDiagram, for compatibility
 }
 ```
 
-## Controls
+## Credits
 
-- Hold **Ctrl** (briefly, on its own) for a names-only preview of the map: tables stay in place
-  and show just their name, sized to stay readable at the current zoom.
-- The **Tighter / Sparser** buttons step the layout spacing (0.5×–2.6×,
-  remembered between visits) and re-arrange the tables.
-- **Drag tables** to arrange them. Positions are saved per database in
-  `localStorage` and restored on reload. **Auto Layout** discards them
-  and re-runs ELK on the visible tables. ELK pins each relationship to
-  its column rows and routes it in its own lane, so lines don't overlap;
-  lines attached to a table you drag afterwards are re-routed on the fly.
-- Scroll to zoom, drag the background (or arrow keys) to pan, pinch on touch.
-  `+` / `-` zoom, `0` fits the diagram. The minimap is draggable too.
-- Hover or select a table to highlight its relationships and see the FK
-  column names on the edges.
-- Click an underlined FK column to jump to the referenced table/column.
-- Click a dotted-underlined PK column to list everything that references it.
-- **Group Tables** shows tightly connected clusters (greedy modularity);
-  unchecking a group hides those tables without re-laying out the rest.
-- The camera button saves a PNG screenshot of the current view; the PDF
-  button exports the whole diagram on one page as a vector PDF (sharp at
-  any zoom, with selectable and searchable text, set in Space Grotesk).
-- Export the diagram as JSON (schema + table positions) or as a MySQL
-  `.sql` script; Import accepts both this JSON and files exported by the
-  old Mermaid-based viewer.
+- Text in the PDF export is set in
+  [Space Grotesk](https://github.com/floriankarsten/space-grotesk)
+  (SIL Open Font License 1.1, see `src/assets/fonts/OFL.txt`).
+- Desktop packaging by [Pake](https://github.com/tw93/Pake).
