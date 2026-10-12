@@ -120,6 +120,7 @@ const MIME_TYPES = {
   '.jpg': 'image/jpeg',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
 };
 
 const server = http.createServer((req, res) => {

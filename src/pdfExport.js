@@ -1,13 +1,33 @@
 import { edgeGeometry } from './RelationEdge.jsx';
 import { HEADER_HEIGHT, ROW_HEIGHT } from './model.js';
+import regularUrl from './assets/fonts/SpaceGrotesk-Regular.ttf?url';
+import boldUrl from './assets/fonts/SpaceGrotesk-Bold.ttf?url';
 
 /* Vector PDF of the whole diagram: tables, lines and crow's-foot markers
-   are drawn as PDF shapes and every name is real text, so the file stays
+   are drawn as PDF shapes and every name is real text in embedded Space Grotesk, so the file stays
    sharp at any zoom and its text can be selected and searched. Uses the
    same geometry as the canvas (sizes from model.js, paths from
    edgeGeometry), with the current theme's colors. */
 const PAD = 40;
 const PT = 0.75; // jsPDF font sizes are in pt; the page is laid out in px
+const FONT = 'SpaceGrotesk';
+
+/* Space Grotesk (static TTFs, SIL OFL) embedded so the PDF matches the
+   app's typography in any viewer. Fetched once, on first export. */
+let fontFiles;
+function loadFontFiles() {
+  const toBase64 = (buf) => {
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  };
+  fontFiles ||= Promise.all([regularUrl, boldUrl].map((u) => fetch(u).then((r) => {
+    if (!r.ok) throw new Error(`Could not load PDF font (${r.status})`);
+    return r.arrayBuffer();
+  }).then(toBase64)));
+  return fontFiles;
+}
 
 function cssColor(name, fallback) {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -80,7 +100,7 @@ function fit(pdf, text, maxWidth) {
 }
 
 export async function exportDiagramVectorPdf(nodes, edges, filename) {
-  const { jsPDF } = await import('jspdf');
+  const [{ jsPDF }, [regular, bold]] = await Promise.all([import('jspdf'), loadFontFiles()]);
   const visible = nodes.filter((n) => !n.hidden);
   if (!visible.length) throw new Error('No visible tables to export.');
   const byId = new Map(visible.map((n) => [n.id, n]));
@@ -114,6 +134,10 @@ export async function exportDiagramVectorPdf(nodes, edges, filename) {
     hotfixes: ['px_scaling'],
     compress: true,
   });
+  pdf.addFileToVFS('SpaceGrotesk-Regular.ttf', regular);
+  pdf.addFont('SpaceGrotesk-Regular.ttf', FONT, 'normal');
+  pdf.addFileToVFS('SpaceGrotesk-Bold.ttf', bold);
+  pdf.addFont('SpaceGrotesk-Bold.ttf', FONT, 'bold');
   pdf.setProperties({ title: filename.replace(/\.pdf$/, ''), creator: 'ERD Viewer' });
   pdf.setFillColor(colors.page);
   pdf.rect(0, 0, width, height, 'F');
@@ -164,7 +188,7 @@ export async function exportDiagramVectorPdf(nodes, edges, filename) {
     pdf.setLineWidth(1);
     pdf.roundedRect(x, y, w, h, 8, 8, 'S');
 
-    pdf.setFont('helvetica', 'bold');
+    pdf.setFont(FONT, 'bold');
     pdf.setFontSize(13 * PT);
     pdf.setTextColor(colors.headerText);
     pdf.text(fit(pdf, table.name, w - 24), x + w / 2, y + HEADER_HEIGHT / 2, { align: 'center', baseline: 'middle' });
@@ -173,7 +197,7 @@ export async function exportDiagramVectorPdf(nodes, edges, filename) {
       const cy = y + HEADER_HEIGHT + i * ROW_HEIGHT + ROW_HEIGHT / 2;
       // Key badges, right-aligned.
       let right = x + w - 10;
-      pdf.setFont('helvetica', 'bold');
+      pdf.setFont(FONT, 'bold');
       pdf.setFontSize(9.5 * PT);
       for (const [on, label, color] of [[col.fk, 'FK', colors.fk], [col.pk, 'PK', colors.pk]]) {
         if (!on) continue;
@@ -191,7 +215,7 @@ export async function exportDiagramVectorPdf(nodes, edges, filename) {
       const typeText = fit(pdf, col.type, w * 0.4);
       pdf.text(typeText, x + 10, cy, { baseline: 'middle' });
       const nameX = x + 10 + pdf.getTextWidth(typeText) + 10;
-      pdf.setFont('helvetica', 'normal');
+      pdf.setFont(FONT, 'normal');
       pdf.setFontSize(12.5 * PT);
       pdf.setTextColor(colors.text);
       pdf.text(fit(pdf, col.name, right - 6 - nameX), nameX, cy, { baseline: 'middle' });
