@@ -61,6 +61,27 @@ function sendJson(res, statusCode, payload) {
   res.end(body);
 }
 
+/* CORS: only the desktop app (a Tauri/Pake WebView page) may call the API
+   cross-origin. Allowing any origin would let any website you visit read
+   your schemas through this server. Add more with CORS_ORIGINS=a,b. */
+const CORS_ORIGINS = new Set([
+  'tauri://localhost',
+  'http://tauri.localhost',
+  'https://tauri.localhost',
+  ...(process.env.CORS_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean),
+]);
+
+function applyCors(req, res) {
+  const origin = req.headers.origin;
+  if (!origin || !CORS_ORIGINS.has(origin)) return false;
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Max-Age', '600');
+  return true;
+}
+
 const MAX_BODY_BYTES = 64 * 1024;
 
 function readJsonBody(req) {
@@ -127,6 +148,15 @@ const MIME_TYPES = {
 const server = http.createServer((req, res) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   let urlPath = decodeURIComponent(requestUrl.pathname);
+
+  if (urlPath.startsWith('/api/')) {
+    const allowed = applyCors(req, res);
+    if (req.method === 'OPTIONS') {
+      res.writeHead(allowed ? 204 : 403);
+      res.end();
+      return;
+    }
+  }
 
   const isRead = req.method === 'GET' || req.method === 'POST';
   if (isRead && urlPath === '/api/schema') {

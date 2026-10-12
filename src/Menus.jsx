@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { defaultApiBase, getApiBase, IS_DESKTOP, setApiBase } from './connection.js';
 
 /* Fixed-position popover below (or above, if it would overflow) an
    anchor rect; closes on outside click or Escape. */
@@ -79,7 +80,7 @@ export function ReferencesMenu({ anchor, title, references, onPick, onClose }) {
 /* Postgres connection settings. Blank fields use the server's .env
    defaults; the .env password itself is never shown or sent here. */
 export function ConnectionMenu({ anchor, initial, defaults, connected, databaseCount, onConnect, onReset, onClose }) {
-  const [form, setForm] = useState(initial);
+  const [form, setForm] = useState(() => ({ ...initial, apiBase: getApiBase() }));
   const [status, setStatus] = useState(
     connected ? { ok: true, text: `Connected as ${connected.user}@${connected.server} — ${databaseCount} database${databaseCount !== 1 ? 's' : ''}` } : null,
   );
@@ -95,7 +96,9 @@ export function ConnectionMenu({ anchor, initial, defaults, connected, databaseC
     setBusy(true);
     setStatus(null);
     try {
-      const body = await onConnect(form);
+      if (IS_DESKTOP) setApiBase(form.apiBase);
+      const { apiBase, ...conn } = form; // eslint-disable-line no-unused-vars
+      const body = await onConnect(conn);
       setStatus({ ok: true, text: `Connected as ${body.user}@${body.server} — ${body.databases.length} database${body.databases.length !== 1 ? 's' : ''}` });
     } catch (err) {
       setStatus({ ok: false, text: err.message });
@@ -108,15 +111,21 @@ export function ConnectionMenu({ anchor, initial, defaults, connected, databaseC
     <Popover anchor={anchor} className="connection-menu" onClose={onClose}>
       <div className="popover-header"><span>Postgres connection</span></div>
       <form className="connection-form" onSubmit={submit}>
+        {IS_DESKTOP && (
+          <label>
+            <span>App server (runs <code>npm start</code>)</span>
+            <input value={form.apiBase} onChange={set('apiBase')} placeholder={defaultApiBase()} autoComplete="off" spellCheck={false} />
+          </label>
+        )}
         <label>
-          <span>Server</span>
+          <span>{IS_DESKTOP ? 'Postgres server' : 'Server'}</span>
           <input
             value={form.server}
             onChange={set('server')}
             placeholder={envServer || 'host:port or postgres://…'}
             autoComplete="off"
             spellCheck={false}
-            autoFocus
+            autoFocus={!IS_DESKTOP}
           />
         </label>
         <label>
@@ -140,7 +149,7 @@ export function ConnectionMenu({ anchor, initial, defaults, connected, databaseC
         {status && <div className={`connection-status ${status.ok ? 'ok' : 'error'}`} role="status">{status.text}</div>}
         <div className="connection-actions">
           {defaults && (
-            <button type="button" className="link-btn" onClick={() => { setForm(onReset()); setStatus(null); }}>
+            <button type="button" className="link-btn" onClick={() => { setForm({ ...onReset(), apiBase: form.apiBase }); setStatus(null); }}>
               Reset to .env defaults
             </button>
           )}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tw93/Pake/main/schema/pake.schema.json",
+  "name": "ERDViewer",
+  "title": "ERD Viewer",
+  "identifier": "com.erdviewer.app",
+  "icon": "desktop/icon.png",
+  "width": 1440,
+  "height": 900,
+  "useLocalFile": true,
+  "hideOnClose": false
+}
