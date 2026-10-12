@@ -10,17 +10,21 @@ const elk = new ELK({ workerFactory: () => new Worker(elkWorkerUrl) });
    left side. With ports pinned to rows, ELK routes every line
    orthogonally in its own channel between layers, so lines don't run on
    top of each other or through tables. */
+// Gaps in canvas px at spacing 1; the sparseness control scales them.
+const SPACINGS = {
+  'elk.layered.spacing.nodeNodeBetweenLayers': 90,
+  'elk.layered.spacing.edgeNodeBetweenLayers': 24,
+  'elk.layered.spacing.edgeEdgeBetweenLayers': 14,
+  'elk.spacing.edgeEdge': 14,
+  'elk.spacing.edgeNode': 24,
+  'elk.spacing.nodeNode': 50,
+  'elk.spacing.componentComponent': 80,
+};
+
 const LAYOUT_OPTIONS = {
   'elk.algorithm': 'layered',
   'elk.direction': 'RIGHT',
   'elk.edgeRouting': 'ORTHOGONAL',
-  'elk.layered.spacing.nodeNodeBetweenLayers': '90',
-  'elk.layered.spacing.edgeNodeBetweenLayers': '24',
-  'elk.layered.spacing.edgeEdgeBetweenLayers': '14',
-  'elk.spacing.edgeEdge': '14',
-  'elk.spacing.edgeNode': '24',
-  'elk.spacing.nodeNode': '50',
-  'elk.spacing.componentComponent': '80',
   'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
   'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
   'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
@@ -31,6 +35,7 @@ const LAYOUT_OPTIONS = {
 const portId = (table, column, side) => `${table}\u0000${column}\u0000${side}`;
 
 /**
+ * `spacing` multiplies every gap (1 = default).
  * Returns {
  *   positions: { [table]: { x, y } },
  *   routes: { [edgeId]: { points: [{x,y}...], source: {x,y}, target: {x,y} } },
@@ -40,7 +45,7 @@ const portId = (table, column, side) => `${table}\u0000${column}\u0000${side}`;
  * table positions the route was computed for, so a route can be dropped
  * once either table is dragged.
  */
-export async function layoutTables(tables, relationships) {
+export async function layoutTables(tables, relationships, spacing = 1) {
   const byName = new Map(tables.map((t) => [t.name, t]));
   const rels = relationships.filter((r) => byName.has(r.source) && byName.has(r.target) && r.source !== r.target);
 
@@ -70,7 +75,10 @@ export async function layoutTables(tables, relationships) {
 
   const graph = {
     id: 'root',
-    layoutOptions: LAYOUT_OPTIONS,
+    layoutOptions: {
+      ...LAYOUT_OPTIONS,
+      ...Object.fromEntries(Object.entries(SPACINGS).map(([k, v]) => [k, String(Math.round(v * spacing))])),
+    },
     children: tables.map((t) => ({
       id: t.name,
       ...tableSize(t),

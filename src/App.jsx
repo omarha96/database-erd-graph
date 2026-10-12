@@ -21,6 +21,11 @@ const edgeTypes = { relation: RelationEdge };
 const SAMPLE_SOURCE = { kind: 'sample', name: 'sample' };
 // Past this many tables, skip rendering nodes/edges outside the viewport.
 const VIRTUALIZE_THRESHOLD = 120;
+// Sparseness levels for the tidy layout (multipliers on all gaps).
+const SPACING_STEPS = [0.5, 0.7, 1, 1.4, 1.9, 2.6];
+function readSpacing() {
+  try { const v = Number(localStorage.getItem('erd-spacing')); return SPACING_STEPS.includes(v) ? v : 1; } catch { return 1; }
+}
 
 /* ---------- Saved table positions (per data source, in localStorage) ---------- */
 const positionsKey = (source) => `erd-positions:${source.kind}:${source.name}`;
@@ -94,6 +99,9 @@ export default function App() {
   sourceRef.current = source;
 
   const [routes, setRoutes] = useState({});
+  const [spacing, setSpacing] = useState(readSpacing);
+  const spacingRef = useRef(spacing);
+  spacingRef.current = spacing;
   const edges = useMemo(() => buildEdges(schema, routes), [schema, routes]);
   const groups = useMemo(() => computeGroups(schema), [schema]);
   const tableStats = useMemo(() => {
@@ -114,7 +122,7 @@ export default function App() {
     const normalized = normalizeSchema(nextSchema);
     const saved = presetPositions || readPositions(nextSource);
     const missing = normalized.tables.some((t) => !saved[t.name]);
-    const layout = missing ? await layoutTables(normalized.tables, normalized.relationships) : null;
+    const layout = missing ? await layoutTables(normalized.tables, normalized.relationships, spacingRef.current) : null;
     const auto = layout?.positions || {};
     const nextRoutes = layout ? layout.routes : presetPositions ? {} : readRoutes(nextSource);
     if (layout && !presetPositions) writeRoutes(nextSource, nextRoutes);
@@ -143,15 +151,24 @@ export default function App() {
     requestAnimationFrame(() => fitView({ padding: 0.12, maxZoom: 1.5 }));
   }, [fitView, setNodes]);
 
-  const relayout = useCallback(async () => {
+  const relayout = useCallback(async (nextSpacing = spacingRef.current) => {
     const visible = schema.tables.filter((t) => !hiddenTables.has(t.name));
-    const { positions, routes: nextRoutes } = await layoutTables(visible, schema.relationships);
+    const { positions, routes: nextRoutes } = await layoutTables(visible, schema.relationships, nextSpacing);
     clearPositions(source);
     writeRoutes(source, nextRoutes);
     setRoutes(nextRoutes);
     setNodes((ns) => ns.map((n) => (positions[n.id] ? { ...n, position: positions[n.id] } : n)));
     requestAnimationFrame(() => fitView({ padding: 0.12, maxZoom: 1.5, duration: 400 }));
   }, [schema, hiddenTables, source, setNodes, fitView]);
+
+  const changeSpacing = (dir) => {
+    const i = SPACING_STEPS.indexOf(spacing) + dir;
+    if (i < 0 || i >= SPACING_STEPS.length) return;
+    const next = SPACING_STEPS[i];
+    setSpacing(next);
+    try { localStorage.setItem('erd-spacing', String(next)); } catch { /* ignore */ }
+    relayout(next);
+  };
 
   const loadDatabase = useCallback(async (name) => {
     setLoading(`Loading schema for "${name}"…`);
@@ -370,7 +387,10 @@ export default function App() {
         onSelectDatabase={onSelectDatabase}
         groupsActive={hiddenGroups.size > 0}
         onToggleGroupMenu={(rect) => setGroupMenuAnchor((a) => (a ? null : rect))}
-        onRelayout={relayout}
+        onRelayout={() => relayout()}
+        spacing={spacing}
+        spacingSteps={SPACING_STEPS}
+        onSpacing={changeSpacing}
         zoom={zoom}
         onZoomIn={() => zoomBy(0.15)}
         onZoomOut={() => zoomBy(-0.15)}

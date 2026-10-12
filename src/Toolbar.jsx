@@ -7,6 +7,7 @@ const Icon = ({ d, children, style }) => (
 export default function Toolbar({
   databases, selectedDatabase, onSelectDatabase,
   groupsActive, onToggleGroupMenu, onRelayout,
+  spacing, spacingSteps, onSpacing,
   zoom, onZoomIn, onZoomOut, onFit,
   mode, onToggleTheme,
   onExportJson, onExportSql, onImport,
@@ -45,6 +46,28 @@ export default function Toolbar({
         </button>
         <button type="button" aria-label="Auto layout" data-tooltip="Auto layout — discard dragged positions and re-arrange visible tables" onClick={onRelayout} disabled={disabled}>
           <Icon><rect x="9" y="2.5" width="6" height="5" rx="1" /><rect x="2.5" y="16.5" width="6" height="5" rx="1" /><rect x="15.5" y="16.5" width="6" height="5" rx="1" /><path d="M12 7.5v4.5M5.5 16.5V12h13v4.5" /></Icon>
+        </button>
+      </div>
+
+      <div className="tool-group" role="group" aria-label="Spacing">
+        <button
+          type="button"
+          aria-label="Tighter layout"
+          data-tooltip="Tighter — pull tables closer together (re-arranges the layout)"
+          onClick={() => onSpacing(-1)}
+          disabled={disabled || spacing === spacingSteps[0]}
+        >
+          <Icon d="M4 12h6M7 9l3 3-3 3M20 12h-6M17 9l-3 3 3 3M12 4v16" />
+        </button>
+        <span id="spacing-label" aria-live="polite" title="Layout spacing">{spacing}×</span>
+        <button
+          type="button"
+          aria-label="Sparser layout"
+          data-tooltip="Sparser — spread tables further apart (re-arranges the layout)"
+          onClick={() => onSpacing(1)}
+          disabled={disabled || spacing === spacingSteps[spacingSteps.length - 1]}
+        >
+          <Icon d="M3 12h7M6 9l-3 3 3 3M21 12h-7M18 9l3 3-3 3M12 4v16" />
         </button>
       </div>
 

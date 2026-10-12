@@ -59,6 +59,8 @@ npm start       # serve ./dist + API on http://localhost:4440 (set PORT to chang
 
 - Hold **Ctrl** (briefly, on its own) for a names-only preview of the map: tables stay in place
   and show just their name, sized to stay readable at the current zoom.
+- The **Tighter / Sparser** buttons step the layout spacing (0.5×–2.6×,
+  remembered between visits) and re-arrange the tables.
 - **Drag tables** to arrange them. Positions are saved per database in
   `localStorage` and restored on reload. **Auto Layout** discards them
   and re-runs ELK on the visible tables. ELK pins each relationship to
