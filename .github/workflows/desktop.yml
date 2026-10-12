@@ -55,6 +55,9 @@ jobs:
       - run: npm ci
 
       - name: Build the desktop bundle
+        env:
+          DATABASE_URL: ''
+          PGPASSWORD: ''
         run: npm run build:desktop
 
       - name: Package with Pake
