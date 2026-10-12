@@ -24,7 +24,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            args: --targets deb,appimage
+            args: --targets deb
           - os: windows-latest
             args: --targets x64
           - os: macos-latest
@@ -72,7 +72,6 @@ jobs:
           name: ERDViewer-${{ runner.os }}
           path: |
             *.deb
-            *.AppImage
             *.dmg
             *.msi
             *.exe
@@ -84,7 +83,6 @@ jobs:
         with:
           files: |
             *.deb
-            *.AppImage
             *.dmg
             *.msi
             *.exe
