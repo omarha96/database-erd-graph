@@ -1,6 +1,7 @@
 {
   "name": "erd-viewer",
   "version": "2.0.0",
+  "private": true,
   "description": "Interactive ER diagram viewer for Postgres schemas, built on React Flow with ELK auto-layout and draggable tables.",
   "main": "server.js",
   "scripts": {

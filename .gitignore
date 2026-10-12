@@ -1,10 +1,19 @@
 node_modules/
-.env
 tmp/
+
+# Local configuration: may contain database credentials. Only the
+# secret-free templates below are tracked.
+.env
+.env.*
+!.env.example
+!.env.desktop
+
+# Build output
 dist/
 dist-desktop/
 *.AppImage
 *.deb
+*.rpm
 *.dmg
 *.msi
 *.exe
