@@ -305,3 +305,35 @@ button { color: var(--fb-text); font: inherit; }
 }
 #hover-label .hover-name { font-size: 14px; font-weight: 700; color: var(--erd-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #hover-label .hover-meta { font-size: 11px; color: var(--fb-text-sec); }
+
+/* ---------- Toolbar tooltips ---------- */
+#zoom-controls button { position: relative; }
+#zoom-controls button[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translate(-50%, 4px);
+  width: max-content;
+  max-width: 240px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: var(--fb-text);
+  color: var(--fb-surface2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: center;
+  white-space: normal;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s ease, transform .15s ease;
+  z-index: 50;
+}
+#zoom-controls button[data-tooltip]:hover::after,
+#zoom-controls button[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  transition-delay: .25s;
+}
