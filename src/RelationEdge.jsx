@@ -29,26 +29,19 @@ function labelPoint(points) {
   return [best.x, best.y];
 }
 
-/* A foreign key: from the referencing column (many side, crow's foot) to
-   the referenced column (one side). It picks whichever sides of the two
-   tables face each other, so edges stay sensible while tables are dragged. */
-function RelationEdge({ id, source, target, data }) {
-  const s = useInternalNode(source);
-  const t = useInternalNode(target);
-  const hovered = useHighlight((st) => st.hovered === source || st.hovered === target);
-  if (!s || !t) return null;
-
-  const sPos = s.internals.positionAbsolute;
-  const tPos = t.internals.positionAbsolute;
-  // Tables still where the last tidy layout put them: use ELK's route,
-  // which keeps every line in its own lane. Otherwise route on the fly.
+/* Path for one FK line between two tables ({ x, y, width }), shared by the
+   canvas and the vector PDF export. Tables still where the last tidy
+   layout put them use ELK's route, which keeps every line in its own
+   lane; otherwise the line is routed on the fly between the facing sides. */
+export function edgeGeometry(sNode, tNode, data) {
+  const sPos = sNode, tPos = tNode, sW = sNode.width, tW = tNode.width;
   const route = data.route;
-  const useRoute = route && near(route.source, sPos) && near(route.target, tPos);
-  const sW = s.measured?.width ?? s.width ?? 0;
-  const tW = t.measured?.width ?? t.width ?? 0;
+  if (route && near(route.source, sPos) && near(route.target, tPos)) {
+    const [labelX, labelY] = labelPoint(route.points);
+    return { path: roundedPath(route.points), labelX, labelY };
+  }
   const sCenter = sPos.x + sW / 2;
   const tCenter = tPos.x + tW / 2;
-
   let sourcePosition, targetPosition;
   if (sPos.x > tPos.x + tW + 30) {
     sourcePosition = Position.Left; targetPosition = Position.Right;
@@ -58,15 +51,32 @@ function RelationEdge({ id, source, target, data }) {
     // Horizontally overlapping tables: loop around the side they lean towards.
     sourcePosition = targetPosition = sCenter <= tCenter ? Position.Left : Position.Right;
   }
+  const [path, labelX, labelY] = getSmoothStepPath({
+    sourceX: sourcePosition === Position.Left ? sPos.x : sPos.x + sW,
+    sourceY: sPos.y + rowCenterY(data.sourceRow),
+    sourcePosition,
+    targetX: targetPosition === Position.Left ? tPos.x : tPos.x + tW,
+    targetY: tPos.y + rowCenterY(data.targetRow),
+    targetPosition,
+    borderRadius: 10,
+    offset: 24,
+  });
+  return { path, labelX, labelY };
+}
 
-  const sourceX = sourcePosition === Position.Left ? sPos.x : sPos.x + sW;
-  const targetX = targetPosition === Position.Left ? tPos.x : tPos.x + tW;
-  const sourceY = sPos.y + rowCenterY(data.sourceRow);
-  const targetY = tPos.y + rowCenterY(data.targetRow);
+/* A foreign key: from the referencing column (many side, crow's foot) to
+   the referenced column (one side). */
+function RelationEdge({ id, source, target, data }) {
+  const s = useInternalNode(source);
+  const t = useInternalNode(target);
+  const hovered = useHighlight((st) => st.hovered === source || st.hovered === target);
+  if (!s || !t) return null;
 
-  const [path, labelX, labelY] = useRoute
-    ? [roundedPath(route.points), ...labelPoint(route.points)]
-    : getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, borderRadius: 10, offset: 24 });
+  const { path, labelX, labelY } = edgeGeometry(
+    { x: s.internals.positionAbsolute.x, y: s.internals.positionAbsolute.y, width: s.measured?.width ?? s.width ?? 0 },
+    { x: t.internals.positionAbsolute.x, y: t.internals.positionAbsolute.y, width: t.measured?.width ?? t.width ?? 0 },
+    data,
+  );
 
   const active = hovered || s.selected || t.selected;
   const suffix = active ? '-active' : '';

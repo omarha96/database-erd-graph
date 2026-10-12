@@ -7,7 +7,8 @@ import TableNode from './TableNode.jsx';
 import RelationEdge from './RelationEdge.jsx';
 import EdgeMarkers from './EdgeMarkers.jsx';
 import HoverLabel from './HoverLabel.jsx';
-import { exportDiagramPdf, exportViewPng } from './capture.js';
+import { exportViewPng } from './capture.js';
+import { exportDiagramVectorPdf } from './pdfExport.js';
 import { maxFittingFontSize, previewFontReady, previewFontSize } from './previewFont.js';
 import Toolbar from './Toolbar.jsx';
 import { GroupMenu, ReferencesMenu } from './Menus.jsx';
@@ -262,7 +263,7 @@ export default function App() {
     try { await fn(); } catch (err) { alert(`Export failed:\n${err.message}`); } finally { setExporting(false); }
   };
   const exportPng = () => runExport(() => exportViewPng(viewportRef.current.querySelector('.react-flow'), `erd-${source.name}.png`));
-  const exportPdf = () => runExport(() => exportDiagramPdf(viewportRef.current.querySelector('.react-flow__viewport'), getNodes(), `erd-${source.name}.pdf`));
+  const exportPdf = () => runExport(() => exportDiagramVectorPdf(getNodes(), edges, `erd-${source.name}.pdf`));
   const exportSql = () => download(`erd-${source.name}.sql`, toMysqlDDL(schema), 'application/sql');
   const importFile = async (file) => {
     try {

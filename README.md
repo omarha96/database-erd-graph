@@ -75,7 +75,8 @@ npm start       # serve ./dist + API on http://localhost:4440 (set PORT to chang
 - **Group Tables** shows tightly connected clusters (greedy modularity);
   unchecking a group hides those tables without re-laying out the rest.
 - The camera button saves a PNG screenshot of the current view; the PDF
-  button exports the whole diagram on one page.
+  button exports the whole diagram on one page as a vector PDF (sharp at
+  any zoom, with selectable and searchable text).
 - Export the diagram as JSON (schema + table positions) or as a MySQL
   `.sql` script; Import accepts both this JSON and files exported by the
   old Mermaid-based viewer.

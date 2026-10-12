@@ -98,7 +98,7 @@ export default function Toolbar({
         <button type="button" aria-label="Save screenshot" data-tooltip="Save a PNG screenshot of the current view" onClick={onExportPng} disabled={disabled || exporting}>
           <Icon><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" /><circle cx="12" cy="12.5" r="3.5" /></Icon>
         </button>
-        <button type="button" aria-label="Export as PDF" data-tooltip="Export the whole diagram as a PDF" onClick={onExportPdf} disabled={disabled || exporting}>
+        <button type="button" aria-label="Export as PDF" data-tooltip="Export the whole diagram as a PDF (vector, with selectable text)" onClick={onExportPdf} disabled={disabled || exporting}>
           <Icon><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5" /><path d="M9 17v-4h1.5a1.5 1.5 0 0 1 0 3H9M14 13v4M14 13h2M14 15h1.5" style={{ strokeWidth: 1.6 }} /></Icon>
         </button>
         <button type="button" aria-label="Import diagram" data-tooltip="Import a diagram JSON file exported from this viewer" onClick={() => fileInput.current.click()} disabled={disabled}>
