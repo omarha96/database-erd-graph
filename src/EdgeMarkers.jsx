@@ -4,6 +4,10 @@
 const VARIANTS = [
   { suffix: '', color: 'var(--erd-edge)' },
   { suffix: '-active', color: 'var(--erd-accent)' },
+  // Diff variants
+  { suffix: '-diff-added', color: 'var(--diff-add)' },
+  { suffix: '-diff-removed', color: 'var(--diff-remove)' },
+  { suffix: '-diff-modified', color: 'var(--diff-modify)' },
 ];
 
 export default function EdgeMarkers() {

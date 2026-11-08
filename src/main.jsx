@@ -1,3 +1,7 @@
+import { Buffer } from 'buffer';
+globalThis.Buffer = Buffer;
+globalThis.process = globalThis.process || { env: {} };
+
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ReactFlowProvider } from '@xyflow/react';

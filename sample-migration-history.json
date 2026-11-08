@@ -1,0 +1,413 @@
+{
+  "version": 1,
+  "database": "sample_db",
+  "generatedAt": 1793877061720,
+  "connection": {
+    "server": "localhost:5432",
+    "user": "postgres",
+    "ssl": false
+  },
+  "migrations": [
+    {
+      "id": "202401150001_create_users",
+      "name": "Create users table",
+      "timestamp": 1705276800000,
+      "schema": {
+        "tables": [
+          {
+            "name": "users",
+            "columns": [
+              {
+                "name": "id",
+                "type": "int",
+                "pk": true,
+                "fk": false
+              },
+              {
+                "name": "email",
+                "type": "varchar",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "name",
+                "type": "varchar",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "created_at",
+                "type": "timestamp",
+                "pk": false,
+                "fk": false
+              }
+            ]
+          }
+        ],
+        "relationships": []
+      },
+      "positions": {
+        "users": {
+          "x": 100,
+          "y": 100
+        }
+      }
+    },
+    {
+      "id": "202401160001_add_posts",
+      "name": "Add posts table with FK to users",
+      "timestamp": 1705363200000,
+      "schema": {
+        "tables": [
+          {
+            "name": "users",
+            "columns": [
+              {
+                "name": "id",
+                "type": "int",
+                "pk": true,
+                "fk": false
+              },
+              {
+                "name": "email",
+                "type": "varchar",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "name",
+                "type": "varchar",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "created_at",
+                "type": "timestamp",
+                "pk": false,
+                "fk": false
+              }
+            ]
+          },
+          {
+            "name": "posts",
+            "columns": [
+              {
+                "name": "id",
+                "type": "int",
+                "pk": true,
+                "fk": false
+              },
+              {
+                "name": "user_id",
+                "type": "int",
+                "pk": false,
+                "fk": true,
+                "ref": {
+                  "table": "users",
+                  "column": "id"
+                }
+              },
+              {
+                "name": "title",
+                "type": "varchar",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "content",
+                "type": "text",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "created_at",
+                "type": "timestamp",
+                "pk": false,
+                "fk": false
+              }
+            ]
+          }
+        ],
+        "relationships": [
+          {
+            "source": "posts",
+            "sourceColumn": "user_id",
+            "target": "users",
+            "targetColumn": "id"
+          }
+        ]
+      },
+      "positions": {
+        "users": {
+          "x": 100,
+          "y": 100
+        },
+        "posts": {
+          "x": 400,
+          "y": 100
+        }
+      }
+    },
+    {
+      "id": "202401170001_add_email_verified",
+      "name": "Add email_verified column to users",
+      "timestamp": 1705449600000,
+      "schema": {
+        "tables": [
+          {
+            "name": "users",
+            "columns": [
+              {
+                "name": "id",
+                "type": "int",
+                "pk": true,
+                "fk": false
+              },
+              {
+                "name": "email",
+                "type": "varchar",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "name",
+                "type": "varchar",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "email_verified",
+                "type": "boolean",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "created_at",
+                "type": "timestamp",
+                "pk": false,
+                "fk": false
+              }
+            ]
+          },
+          {
+            "name": "posts",
+            "columns": [
+              {
+                "name": "id",
+                "type": "int",
+                "pk": true,
+                "fk": false
+              },
+              {
+                "name": "user_id",
+                "type": "int",
+                "pk": false,
+                "fk": true,
+                "ref": {
+                  "table": "users",
+                  "column": "id"
+                }
+              },
+              {
+                "name": "title",
+                "type": "varchar",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "content",
+                "type": "text",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "created_at",
+                "type": "timestamp",
+                "pk": false,
+                "fk": false
+              }
+            ]
+          }
+        ],
+        "relationships": [
+          {
+            "source": "posts",
+            "sourceColumn": "user_id",
+            "target": "users",
+            "targetColumn": "id"
+          }
+        ]
+      },
+      "positions": {
+        "users": {
+          "x": 100,
+          "y": 100
+        },
+        "posts": {
+          "x": 400,
+          "y": 100
+        }
+      }
+    },
+    {
+      "id": "202401180001_add_comments",
+      "name": "Add comments table with FKs to users and posts",
+      "timestamp": 1705536000000,
+      "schema": {
+        "tables": [
+          {
+            "name": "users",
+            "columns": [
+              {
+                "name": "id",
+                "type": "int",
+                "pk": true,
+                "fk": false
+              },
+              {
+                "name": "email",
+                "type": "varchar",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "name",
+                "type": "varchar",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "email_verified",
+                "type": "boolean",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "created_at",
+                "type": "timestamp",
+                "pk": false,
+                "fk": false
+              }
+            ]
+          },
+          {
+            "name": "posts",
+            "columns": [
+              {
+                "name": "id",
+                "type": "int",
+                "pk": true,
+                "fk": false
+              },
+              {
+                "name": "user_id",
+                "type": "int",
+                "pk": false,
+                "fk": true,
+                "ref": {
+                  "table": "users",
+                  "column": "id"
+                }
+              },
+              {
+                "name": "title",
+                "type": "varchar",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "content",
+                "type": "text",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "created_at",
+                "type": "timestamp",
+                "pk": false,
+                "fk": false
+              }
+            ]
+          },
+          {
+            "name": "comments",
+            "columns": [
+              {
+                "name": "id",
+                "type": "int",
+                "pk": true,
+                "fk": false
+              },
+              {
+                "name": "post_id",
+                "type": "int",
+                "pk": false,
+                "fk": true,
+                "ref": {
+                  "table": "posts",
+                  "column": "id"
+                }
+              },
+              {
+                "name": "user_id",
+                "type": "int",
+                "pk": false,
+                "fk": true,
+                "ref": {
+                  "table": "users",
+                  "column": "id"
+                }
+              },
+              {
+                "name": "content",
+                "type": "text",
+                "pk": false,
+                "fk": false
+              },
+              {
+                "name": "created_at",
+                "type": "timestamp",
+                "pk": false,
+                "fk": false
+              }
+            ]
+          }
+        ],
+        "relationships": [
+          {
+            "source": "posts",
+            "sourceColumn": "user_id",
+            "target": "users",
+            "targetColumn": "id"
+          },
+          {
+            "source": "comments",
+            "sourceColumn": "post_id",
+            "target": "posts",
+            "targetColumn": "id"
+          },
+          {
+            "source": "comments",
+            "sourceColumn": "user_id",
+            "target": "users",
+            "targetColumn": "id"
+          }
+        ]
+      },
+      "positions": {
+        "users": {
+          "x": 100,
+          "y": 100
+        },
+        "posts": {
+          "x": 400,
+          "y": 100
+        },
+        "comments": {
+          "x": 700,
+          "y": 200
+        }
+      }
+    }
+  ]
+}

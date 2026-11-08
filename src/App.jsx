@@ -18,6 +18,10 @@ import { layoutTables } from './layout.js';
 import { computeGroups, edgeId, normalizeSchema, parseMermaidSchema, tableSize, toMysqlDDL } from './model.js';
 import { sampleSchema } from './sampleSchema.js';
 import { api, clearSavedConnection, readSavedConnection, saveConnection } from './connection.js';
+import MigrationPanel from './MigrationPanel.jsx';
+import DiffView from './DiffView.jsx';
+import { loadMigrationsFromJson, saveMigrationsToJson } from './migrations.js';
+import { computeSchemaDiff, buildDiffLookups, applyDiffClasses, getDiffSummary } from './diff.js';
 
 const nodeTypes = { table: TableNode };
 const edgeTypes = { relation: RelationEdge };
@@ -104,6 +108,16 @@ export default function App() {
   const sourceRef = useRef(source);
   sourceRef.current = source;
 
+  // Migration history state
+  const [migrationHistory, setMigrationHistory] = useState([]);
+  const [currentMigrationIndex, setCurrentMigrationIndex] = useState(-1);
+  const [showMigrationPanel, setShowMigrationPanel] = useState(false);
+  const [diffMode, setDiffMode] = useState(false);
+  const [diffSelection, setDiffSelection] = useState({ from: null, to: null });
+  const [diffResult, setDiffResult] = useState(null);
+  const [selectedForDiff, setSelectedForDiff] = useState(new Set()); // max 2 indices
+  sourceRef.current = source;
+
   const [routes, setRoutes] = useState({});
   const [spacing, setSpacing] = useState(readSpacing);
   const spacingRef = useRef(spacing);
@@ -161,6 +175,93 @@ export default function App() {
     if (presetPositions) writePositions(nextSource, Object.entries(presetPositions).map(([id, position]) => ({ id, position })));
     requestAnimationFrame(() => fitView({ padding: 0.12, maxZoom: 1.5 }));
   }, [fitView, setNodes]);
+
+
+  /* ---------- Migration History Handlers ---------- */
+  const toggleMigrationPanel = useCallback(() => {
+    setShowMigrationPanel((prev) => !prev);
+  }, []);
+
+  const closeMigrationPanel = useCallback(() => {
+    setShowMigrationPanel(false);
+  }, []);
+
+  const loadMigration = useCallback(async (index) => {
+    if (index < 0 || index >= migrationHistory.length) return;
+    const migration = migrationHistory[index];
+    if (!migration.schema) return;
+    
+    // Load the schema with saved positions
+    await showSchema(migration.schema, { 
+      kind: 'migration', 
+      name: migration.id,
+      migrationIndex: index 
+    }, migration.positions);
+    setCurrentMigrationIndex(index);
+  }, [migrationHistory, showSchema]);
+
+  const selectForDiff = useCallback((index) => {
+    setSelectedForDiff((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else if (next.size < 2) {
+        next.add(index);
+      }
+      return next;
+    });
+  }, []);
+
+  const runDiff = useCallback(() => {
+    const indices = Array.from(selectedForDiff).sort((a, b) => a - b);
+    if (indices.length !== 2) return;
+    
+    const fromMigration = migrationHistory[indices[0]];
+    const toMigration = migrationHistory[indices[1]];
+    if (!fromMigration?.schema || !toMigration?.schema) return;
+    
+    const diff = computeSchemaDiff(fromMigration.schema, toMigration.schema);
+    setDiffResult(diff);
+    setDiffSelection({ from: indices[0], to: indices[1] });
+    setDiffMode(true);
+    setShowMigrationPanel(false); // Close panel when entering diff mode
+  }, [selectedForDiff, migrationHistory]);
+
+  const exitDiffMode = useCallback(() => {
+    setDiffMode(false);
+    setDiffResult(null);
+    setDiffSelection({ from: null, to: null });
+    setSelectedForDiff(new Set());
+  }, []);
+
+  const nextMigration = useCallback(() => {
+    if (currentMigrationIndex < migrationHistory.length - 1) {
+      loadMigration(currentMigrationIndex + 1);
+    }
+  }, [currentMigrationIndex, migrationHistory.length, loadMigration]);
+
+  const prevMigration = useCallback(() => {
+    if (currentMigrationIndex > 0) {
+      loadMigration(currentMigrationIndex - 1);
+    }
+  }, [currentMigrationIndex, loadMigration]);
+
+  const handleMigrationFileImport = useCallback(async (file) => {
+    try {
+      const data = await loadMigrationsFromJson(file);
+      setMigrationHistory(data.migrations);
+      setCurrentMigrationIndex(data.migrations.length - 1); // Start at latest
+      // Load the latest migration
+      if (data.migrations.length > 0) {
+        await loadMigration(data.migrations.length - 1);
+      }
+      setShowMigrationPanel(true);
+    } catch (err) {
+      alert(`Could not import migration history:
+${err.message}`);
+    }
+  }, [loadMigration]);
+
 
   const relayout = useCallback(async (nextSpacing = spacingRef.current) => {
     const visible = schema.tables.filter((t) => !hiddenTables.has(t.name));
@@ -472,6 +573,17 @@ export default function App() {
         exporting={exporting}
         onImport={importFile}
         disabled={!!loading}
+        // Migration props
+        showMigrationPanel={showMigrationPanel}
+        onToggleMigrationPanel={toggleMigrationPanel}
+        diffMode={diffMode}
+        diffResult={diffResult}
+        onExitDiffMode={exitDiffMode}
+        migrationHistory={migrationHistory}
+        currentMigrationIndex={currentMigrationIndex}
+        onNextMigration={nextMigration}
+        onPrevMigration={prevMigration}
+        onImportMigrations={handleMigrationFileImport}
       />
       <div id="hint">
         drag tables to arrange · hold Ctrl for a names-only map · scroll to zoom · drag background or arrow keys to pan · click an FK to jump · click a referenced PK for reverse relations · press 0 to fit
@@ -509,6 +621,26 @@ export default function App() {
           onClose={() => setRefsMenu(null)}
         />
       )}
+      <MigrationPanel
+        migrations={migrationHistory}
+        currentIndex={currentMigrationIndex}
+        onLoadMigration={loadMigration}
+        onSelectForDiff={selectForDiff}
+        onNextMigration={nextMigration}
+        onPrevMigration={prevMigration}
+        onCompare={runDiff}
+        selectedForDiff={selectedForDiff}
+        onClose={closeMigrationPanel}
+        isOpen={showMigrationPanel}
+      />
+      <DiffView
+        diffResult={diffResult}
+        fromMigration={diffSelection.from !== null ? migrationHistory[diffSelection.from] : null}
+        toMigration={diffSelection.to !== null ? migrationHistory[diffSelection.to] : null}
+        onNavigateToTable={actions.goToTable}
+        onClose={exitDiffMode}
+        isOpen={diffMode}
+      />
       {loading && (
         <div id="loading-overlay">
           <div className="loading-card">

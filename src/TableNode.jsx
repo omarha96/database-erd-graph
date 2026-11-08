@@ -8,38 +8,71 @@ import { displayName } from './previewFont.js';
    individual rows using the fixed row height from model.js, so the two
    handles here only exist to satisfy React Flow and are invisible. */
 function TableNode({ data, selected }) {
-  const { table, width, referencedColumns, neighbors } = data;
+  const { table, width, referencedColumns, neighbors, diffStatus, diffColumns } = data;
   const actions = useContext(ErdActions);
   // Some other, unconnected table is hovered (only shown in the Ctrl preview).
   const unrelated = useHighlight((s) => !!s.hovered && s.hovered !== table.name && !neighbors.has(s.hovered));
   const flash = useHighlight((s) => (s.flash?.table === table.name ? s.flash.column ?? '' : null));
 
+  // Build table className with diff status
+  const tableClassName = [
+    'erd-table',
+    selected ? 'selected' : '',
+    flash !== null ? 'flash' : '',
+    unrelated ? 'unrelated' : '',
+    diffStatus ? `diff-${diffStatus}` : '',
+  ].filter(Boolean).join(' ');
+
+  // Build diff tooltip for table header
+  const diffTableTooltip = diffStatus
+    ? `Table ${diffStatus === 'added' ? 'added' : diffStatus === 'removed' ? 'removed' : 'modified'}`
+    : undefined;
+
   return (
     <div
-      className={`erd-table${selected ? ' selected' : ''}${flash !== null ? ' flash' : ''}${unrelated ? ' unrelated' : ''}`}
+      className={tableClassName}
       style={{ width }}
+      title={diffTableTooltip || table.name}
     >
       <Handle type="target" position={Position.Left} className="erd-handle" isConnectable={false} />
       <Handle type="source" position={Position.Right} className="erd-handle" isConnectable={false} />
-      <div className="erd-table-header" title={table.name}>{table.name}</div>
+      <div className="erd-table-header" title={diffTableTooltip || table.name}>{table.name}</div>
       <div className="erd-table-preview" aria-hidden="true"><span>{displayName(table.name)}</span></div>
       {table.columns.map((col) => {
         const fkLink = !!col.ref;
         const pkLink = col.pk && referencedColumns.has(col.name);
+        const colDiffStatus = diffColumns?.[col.name];
         const onActivate = fkLink
           ? (e) => { e.stopPropagation(); actions.goToTable(col.ref.table, col.ref.column); }
           : pkLink
             ? (e) => { e.stopPropagation(); actions.showReferences(e.currentTarget, table.name, col.name); }
             : undefined;
+
+        // Build row className with diff status
+        const rowClassName = [
+          'erd-row',
+          flash === col.name ? 'flash' : '',
+          fkLink ? 'fk-link' : '',
+          pkLink ? 'pk-link' : '',
+          colDiffStatus ? `diff-${colDiffStatus}` : '',
+        ].filter(Boolean).join(' ');
+
+        // Build diff tooltip for row
+        const diffRowTooltip = colDiffStatus
+          ? `Column ${diffStatus === 'added' ? 'added' : diffStatus === 'removed' ? 'removed' : 'modified'}`
+          : fkLink ? `${col.name} → ${col.ref.table}.${col.ref.column}`
+          : pkLink ? `Show tables referencing ${table.name}.${col.name}`
+          : undefined;
+
         return (
           <div
             key={col.name}
-            className={`erd-row${flash === col.name ? ' flash' : ''}${fkLink ? ' fk-link' : ''}${pkLink ? ' pk-link' : ''}`}
+            className={rowClassName}
             onClick={onActivate}
             onKeyDown={onActivate && ((e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(e); } })}
             tabIndex={onActivate ? 0 : undefined}
             role={onActivate ? 'button' : undefined}
-            title={fkLink ? `${col.name} → ${col.ref.table}.${col.ref.column}` : pkLink ? `Show tables referencing ${table.name}.${col.name}` : undefined}
+            title={diffRowTooltip}
           >
             <span className="erd-col-type">{col.type}</span>
             <span className="erd-col-name">{col.name}</span>

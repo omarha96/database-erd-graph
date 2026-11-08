@@ -79,20 +79,30 @@ function RelationEdge({ id, source, target, data }) {
   );
 
   const active = hovered || s.selected || t.selected;
-  const suffix = active ? '-active' : '';
+  const diffStatus = data.diffStatus; // 'added' | 'removed' | 'modified' | undefined
+  const isDiffActive = diffStatus !== undefined;
+  
+  // Build className with diff status
+  const edgeClassName = ['erd-edge'];
+  if (active) edgeClassName.push('active');
+  if (diffStatus) edgeClassName.push(`diff-${diffStatus}`);
+  
+  // Build marker suffix
+  const markerSuffix = isDiffActive ? `-diff-${diffStatus}` : (active ? '-active' : '');
+  
   return (
     <>
       <BaseEdge
         id={id}
         path={path}
-        className={`erd-edge${active ? ' active' : ''}`}
-        markerStart={`url(#erd-many${suffix})`}
-        markerEnd={`url(#erd-one${suffix})`}
+        className={edgeClassName.join(' ')}
+        markerStart={`url(#erd-many${markerSuffix})`}
+        markerEnd={`url(#erd-one${markerSuffix})`}
         interactionWidth={12}
       />
-      {active && (
+      {(active || isDiffActive) && (
         <EdgeLabelRenderer>
-          <div className="erd-edge-label" style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}>
+          <div className={`erd-edge-label${diffStatus ? ` diff-${diffStatus}` : ''}`} style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}>
             {data.label}
           </div>
         </EdgeLabelRenderer>
