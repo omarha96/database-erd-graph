@@ -12,25 +12,10 @@ export default function Toolbar({
   mode, onToggleTheme,
   onExportJson, onExportSql, onExportPng, onExportPdf, exporting, onImport,
   disabled,
-  // Migration props
   showMigrationPanel, onToggleMigrationPanel,
-  diffMode, diffResult, onExitDiffMode,
-  migrationHistory, currentMigrationIndex, onNextMigration, onPrevMigration,
-  onImportMigrations,
 }) {
   const fileInput = useRef(null);
-  const migrationFileInput = useRef(null);
   const themeTitle = mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
-
-  // Diff summary for legend
-  const diffSummary = diffResult ? {
-    tablesAdded: diffResult.summary?.tablesAdded || 0,
-    tablesRemoved: diffResult.summary?.tablesRemoved || 0,
-    tablesModified: diffResult.summary?.tablesModified || 0,
-    relationshipsAdded: diffResult.summary?.relationshipsAdded || 0,
-    relationshipsRemoved: diffResult.summary?.relationshipsRemoved || 0,
-    relationshipsModified: diffResult.summary?.relationshipsModified || 0,
-  } : null;
 
   return (
     <div id="zoom-controls" role="group" aria-label="Diagram controls">
@@ -57,34 +42,16 @@ export default function Toolbar({
           <option value="">Sample data (no database)</option>
           {databases.map((name) => <option key={name} value={name}>{name}</option>)}
         </select>
-        {/* Migration panel toggle */}
         <button
           type="button"
-          aria-label={showMigrationPanel ? 'Hide migration history' : 'Show migration history'}
-          data-tooltip={showMigrationPanel ? 'Hide migration history (M)' : 'Show migration history (M)'}
+          aria-label="Migrations"
+          data-tooltip="Migrations: generate, browse and compare the schema history (M)"
           onClick={onToggleMigrationPanel}
-          disabled={disabled || migrationHistory.length === 0}
           className={showMigrationPanel ? 'active' : undefined}
-          style={{ opacity: migrationHistory.length === 0 ? 0.5 : 1 }}
+          aria-pressed={showMigrationPanel}
         >
-          <Icon d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7" />
+          <Icon d="M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9" />
         </button>
-        <button
-          type="button"
-          aria-label="Import migration history"
-          data-tooltip="Import migration history JSON file"
-          onClick={() => migrationFileInput.current.click()}
-          disabled={disabled}
-        >
-          <Icon d="M12 4v11M8 11l4 4 4-4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
-        </button>
-        <input
-          ref={migrationFileInput}
-          type="file"
-          accept="application/json"
-          hidden
-          onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; if (f) onImportMigrations(f); }}
-        />
       </div>
 
       <div className="tool-group" role="group" aria-label="Layout">
@@ -142,52 +109,6 @@ export default function Toolbar({
             : <Icon d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2Z" />}
         </button>
       </div>
-
-      {/* Diff Mode: Navigation & Legend */}
-      {diffMode && diffSummary && (
-        <div className="tool-group diff-legend" role="group" aria-label="Diff navigation and legend">
-          <button
-            type="button"
-            aria-label="Previous migration"
-            data-tooltip="Previous migration (Alt+Up)"
-            onClick={onPrevMigration}
-            disabled={disabled || currentMigrationIndex <= 0}
-          >
-            <Icon d="M15 18l-6-6 6-6" />
-          </button>
-          <span style={{ fontSize: '12px', color: 'var(--fb-text-sec)', minWidth: '80px', textAlign: 'center' }}>
-            {`${currentMigrationIndex + 1} / ${migrationHistory.length}`}
-          </span>
-          <button
-            type="button"
-            aria-label="Next migration"
-            data-tooltip="Next migration (Alt+Down)"
-            onClick={onNextMigration}
-            disabled={disabled || currentMigrationIndex >= migrationHistory.length - 1}
-          >
-            <Icon d="M9 6l6 6-6 6" />
-          </button>
-          <span className="legend-item">
-            <span className="legend-color added" aria-hidden="true"></span>
-            +{diffSummary.tablesAdded} tables
-          </span>
-          <span className="legend-item">
-            <span className="legend-color removed" aria-hidden="true"></span>
-            -{diffSummary.tablesRemoved} tables
-          </span>
-          <span className="legend-item">
-            <span className="legend-color modified" aria-hidden="true"></span>
-            ~{diffSummary.tablesModified} tables
-          </span>
-          <button
-            className="exit-diff-btn text-btn"
-            onClick={onExitDiffMode}
-            aria-label="Exit diff mode"
-          >
-            Exit Diff
-          </button>
-        </div>
-      )}
 
       <div className="tool-group" role="group" aria-label="File">
         <button type="button" aria-label="Export diagram" data-tooltip="Export the diagram (schema + table positions) as JSON" onClick={onExportJson} disabled={disabled}>

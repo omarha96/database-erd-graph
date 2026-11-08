@@ -100,7 +100,7 @@ export default function DiffView({
 
       {/* Diff Content */}
       <div className="diff-panel-content" ref={contentRef} role="log" aria-live="polite">
-        {renderDiffLines(diffResult).map((line, i) => (
+        {renderDiffLines(diffResult, onNavigateToTable).map((line, i) => (
           <div key={i} className={`diff-line ${line.className}`} onClick={line.onClick}>
             {line.prefix}{line.text}
           </div>
@@ -110,7 +110,7 @@ export default function DiffView({
   );
 }
 
-function renderDiffLines(diffResult) {
+function renderDiffLines(diffResult, navigateToTable) {
   const lines = [];
 
   // Header
@@ -178,11 +178,6 @@ function renderDiffLines(diffResult) {
   }
 
   return lines;
-}
-
-// This will be replaced by the parent's onNavigateToTable
-function navigateToTable(tableName, columnName) {
-  onNavigateToTable?.(tableName, columnName);
 }
 
 function getDiffSummary(diffResult) {

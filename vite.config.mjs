@@ -23,18 +23,6 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), noSecretsInBundle(env)],
     envPrefix: 'VITE_',
-    define: {
-      'process.env': {},
-      global: 'globalThis',
-    },
-    resolve: {
-      alias: {
-        buffer: 'buffer',
-      },
-    },
-    optimizeDeps: {
-      include: ['buffer'],
-    },
     server: {
       host: true, // reachable from the LAN, like server.js
       port: 5173,

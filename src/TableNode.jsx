@@ -59,7 +59,7 @@ function TableNode({ data, selected }) {
 
         // Build diff tooltip for row
         const diffRowTooltip = colDiffStatus
-          ? `Column ${diffStatus === 'added' ? 'added' : diffStatus === 'removed' ? 'removed' : 'modified'}`
+          ? `Column ${colDiffStatus}`
           : fkLink ? `${col.name} → ${col.ref.table}.${col.ref.column}`
           : pkLink ? `Show tables referencing ${table.name}.${col.name}`
           : undefined;

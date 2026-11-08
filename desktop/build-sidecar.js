@@ -17,7 +17,7 @@ fs.mkdirSync(work, { recursive: true });
 fs.mkdirSync(binDir, { recursive: true });
 
 // pg-native is pg's optional native driver; the pure-JS one is used.
-execSync(`npx esbuild server.js --bundle --platform=node --format=cjs --external:pg-native --outfile="${path.join(work, 'server.cjs')}"`, { cwd: root, stdio: 'inherit' });
+execSync(`npx esbuild server.js --bundle --platform=node --format=cjs --external:pg-native --external:esbuild --outfile="${path.join(work, 'server.cjs')}"`, { cwd: root, stdio: 'inherit' });
 
 fs.writeFileSync(path.join(work, 'sea-config.json'), JSON.stringify({
   main: path.join(work, 'server.cjs'),

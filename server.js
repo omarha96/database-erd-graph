@@ -37,7 +37,9 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const { fetchSchema } = require('./lib/schema');
+const crypto = require('crypto');
 const { publicDefaults, resolveConnection, poolFor } = require('./lib/connection');
+const { generateMigrationHistory, compareMigrations } = require('./lib/migrations');
 
 const PORT = process.env.PORT || 4440;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -132,6 +134,65 @@ async function handleDatabasesRequest(req, res, query) {
   }
 }
 
+/* POST { connection, database, schema, migrationDir, table? }: replays the
+   migrations into a temporary database and returns the history JSON. The
+   directory is read on this server, so it falls back to MIGRATIONS_DIR. */
+/* Generated histories are cached per (connection, database, schema, folder,
+   table) so comparisons don't replay every migration again. POST
+   /api/migrations always regenerates; /api/migrations/diff reuses. */
+const migrationCache = new Map();
+const MAX_CACHED_HISTORIES = 4;
+
+async function migrationHistoryFor(body, { fresh = false } = {}) {
+  const conn = resolveConnection(body.connection || {});
+  const opts = {
+    conn,
+    database: body.database || undefined,
+    schema: body.schema || process.env.PGSCHEMA || 'public',
+    migrationDir: body.migrationDir || process.env.MIGRATIONS_DIR,
+    table: body.table || undefined,
+    log: (msg) => console.log(`/api/migrations: ${msg}`),
+  };
+  const key = JSON.stringify([
+    conn.host, conn.port, conn.user, crypto.createHash('sha256').update(conn.password || '').digest('hex'),
+    opts.database || conn.database, opts.schema, opts.migrationDir, opts.table,
+  ]);
+  if (!fresh && migrationCache.has(key)) return migrationCache.get(key);
+  const history = await generateMigrationHistory(opts);
+  migrationCache.delete(key);
+  migrationCache.set(key, history);
+  if (migrationCache.size > MAX_CACHED_HISTORIES) migrationCache.delete(migrationCache.keys().next().value);
+  return history;
+}
+
+async function handleMigrationsRequest(req, res) {
+  try {
+    sendJson(res, 200, await migrationHistoryFor(await readJsonBody(req), { fresh: true }));
+  } catch (err) {
+    console.error('/api/migrations failed:', err.message);
+    sendJson(res, 502, { error: 'Could not generate migration history.', detail: err.message });
+  }
+}
+
+/* Same body plus optional { from, to } (migration id or name; default: the
+   latest migration against the one before it). ?format=text returns the
+   git-style diff as plain text, for scripts and CI logs. */
+async function handleMigrationDiffRequest(req, res, query) {
+  try {
+    const body = await readJsonBody(req);
+    const result = compareMigrations(await migrationHistoryFor(body), body);
+    if (query.get('format') === 'text') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(result.text);
+    } else {
+      sendJson(res, 200, result);
+    }
+  } catch (err) {
+    console.error('/api/migrations/diff failed:', err.message);
+    sendJson(res, 502, { error: 'Could not compare migrations.', detail: err.message });
+  }
+}
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -166,6 +227,16 @@ const server = http.createServer((req, res) => {
 
   if (isRead && urlPath === '/api/databases') {
     handleDatabasesRequest(req, res, requestUrl.searchParams);
+    return;
+  }
+
+  if (req.method === 'POST' && urlPath === '/api/migrations/diff') {
+    handleMigrationDiffRequest(req, res, requestUrl.searchParams);
+    return;
+  }
+
+  if (req.method === 'POST' && urlPath === '/api/migrations') {
+    handleMigrationsRequest(req, res);
     return;
   }
 

@@ -198,6 +198,19 @@ export function applyDiffClasses(nodes, edges, lookups) {
 }
 
 /**
+ * Union of both schemas so removed tables/columns/relations stay visible (in red)
+ * on the canvas: the "to" schema plus everything the diff marks as removed.
+ * @param {DiffResult} diffResult
+ * @returns {Schema}
+ */
+export function mergeForDiff(diffResult) {
+  const removedCols = new Map(diffResult.tables.filter(t => t.type === 'modified').map(t => [t.tableName, t.removed]));
+  const tables = diffResult.toSchema.tables.map(t => ({ ...t, columns: [...t.columns, ...(removedCols.get(t.name) || [])] }));
+  for (const t of diffResult.tables) if (t.type === 'removed') tables.push(t.table);
+  return { tables, relationships: [...diffResult.toSchema.relationships, ...diffResult.relationships.removed] };
+}
+
+/**
  * Generate unified diff text output (Git-style)
  * @param {DiffResult} diffResult
  * @returns {string}

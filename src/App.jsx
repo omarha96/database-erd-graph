@@ -20,8 +20,7 @@ import { sampleSchema } from './sampleSchema.js';
 import { api, clearSavedConnection, readSavedConnection, saveConnection } from './connection.js';
 import MigrationPanel from './MigrationPanel.jsx';
 import DiffView from './DiffView.jsx';
-import { loadMigrationsFromJson, saveMigrationsToJson } from './migrations.js';
-import { computeSchemaDiff, buildDiffLookups, applyDiffClasses, getDiffSummary } from './diff.js';
+import { buildDiffLookups, applyDiffClasses, mergeForDiff } from './diff.js';
 
 const nodeTypes = { table: TableNode };
 const edgeTypes = { relation: RelationEdge };
@@ -71,6 +70,9 @@ function download(filename, content, type) {
   URL.revokeObjectURL(url);
 }
 
+// The last database opened (kept in ?db=), still valid while a migration snapshot is shown.
+const openDatabaseName = () => new URLSearchParams(window.location.search).get('db') || '';
+
 function setDbQueryParam(name) {
   const url = new URL(window.location.href);
   if (name) url.searchParams.set('db', name); else url.searchParams.delete('db');
@@ -108,15 +110,15 @@ export default function App() {
   const sourceRef = useRef(source);
   sourceRef.current = source;
 
-  // Migration history state
+  // Migration history (generated and compared by the backend)
   const [migrationHistory, setMigrationHistory] = useState([]);
   const [currentMigrationIndex, setCurrentMigrationIndex] = useState(-1);
   const [showMigrationPanel, setShowMigrationPanel] = useState(false);
-  const [diffMode, setDiffMode] = useState(false);
-  const [diffSelection, setDiffSelection] = useState({ from: null, to: null });
-  const [diffResult, setDiffResult] = useState(null);
-  const [selectedForDiff, setSelectedForDiff] = useState(new Set()); // max 2 indices
-  sourceRef.current = source;
+  const [diffResult, setDiffResult] = useState(null); // includes { from, to } indices
+  const [migrationBusy, setMigrationBusy] = useState(false);
+  const [migrationError, setMigrationError] = useState(null);
+  const [migrationDir, setMigrationDir] = useState(null); // where the server found the files
+  const migrationRequestRef = useRef(null); // { connection, database, migrationDir } of the history shown
 
   const [routes, setRoutes] = useState({});
   const [spacing, setSpacing] = useState(readSpacing);
@@ -124,6 +126,10 @@ export default function App() {
   spacingRef.current = spacing;
   const edges = useMemo(() => buildEdges(schema, routes), [schema, routes]);
   const groups = useMemo(() => computeGroups(schema), [schema]);
+  const diffView = useMemo(
+    () => (diffResult ? applyDiffClasses(nodes, edges, buildDiffLookups(diffResult)) : { nodes, edges }),
+    [diffResult, nodes, edges],
+  );
   const tableStats = useMemo(() => {
     const stats = new Map(schema.tables.map((t) => [t.name, { columns: t.columns.length, relations: 0 }]));
     for (const r of schema.relationships) {
@@ -177,91 +183,47 @@ export default function App() {
   }, [fitView, setNodes]);
 
 
-  /* ---------- Migration History Handlers ---------- */
-  const toggleMigrationPanel = useCallback(() => {
-    setShowMigrationPanel((prev) => !prev);
+  /* ---------- Migration history ---------- */
+  const toggleMigrationPanel = useCallback(() => setShowMigrationPanel((open) => !open), []);
+  const closeMigrationPanel = useCallback(() => setShowMigrationPanel(false), []);
+  const exitDiffMode = useCallback(() => setDiffResult(null), []);
+
+  // Runs a backend call with the panel's busy/error state.
+  const migrationTask = useCallback(async (task) => {
+    setMigrationBusy(true);
+    setMigrationError(null);
+    try { await task(); } catch (err) { setMigrationError(err.message); } finally { setMigrationBusy(false); }
   }, []);
 
-  const closeMigrationPanel = useCallback(() => {
-    setShowMigrationPanel(false);
-  }, []);
-
-  const loadMigration = useCallback(async (index) => {
-    if (index < 0 || index >= migrationHistory.length) return;
-    const migration = migrationHistory[index];
-    if (!migration.schema) return;
-    
-    // Load the schema with saved positions
-    await showSchema(migration.schema, { 
-      kind: 'migration', 
-      name: migration.id,
-      migrationIndex: index 
-    }, migration.positions);
+  // `history` is passed explicitly right after generating, before state has updated.
+  const loadMigration = useCallback(async (index, history = migrationHistory) => {
+    const migration = history[index];
+    if (!migration) return;
+    setDiffResult(null);
+    await showSchema(migration.schema, { kind: 'migration', name: migration.id }, migration.positions);
     setCurrentMigrationIndex(index);
   }, [migrationHistory, showSchema]);
 
-  const selectForDiff = useCallback((index) => {
-    setSelectedForDiff((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) {
-        next.delete(index);
-      } else if (next.size < 2) {
-        next.add(index);
-      }
-      return next;
-    });
-  }, []);
+  const generateMigrations = useCallback(() => migrationTask(async () => {
+    const request = { connection: connectionRef.current, database: openDatabaseName() };
+    const history = await api('/api/migrations', request);
+    if (!history.migrations.length) throw new Error('No migrations found in the migration table.');
+    migrationRequestRef.current = request;
+    setMigrationHistory(history.migrations);
+    setMigrationDir(history.migrationDir);
+    await loadMigration(history.migrations.length - 1, history.migrations); // start at the latest
+  }), [migrationTask, loadMigration]);
 
-  const runDiff = useCallback(() => {
-    const indices = Array.from(selectedForDiff).sort((a, b) => a - b);
-    if (indices.length !== 2) return;
-    
-    const fromMigration = migrationHistory[indices[0]];
-    const toMigration = migrationHistory[indices[1]];
-    if (!fromMigration?.schema || !toMigration?.schema) return;
-    
-    const diff = computeSchemaDiff(fromMigration.schema, toMigration.schema);
+  // fromIdx -1 means "an empty database", i.e. everything the first migration created.
+  const compareMigrations = useCallback((fromIdx, toIdx) => migrationTask(async () => {
+    const from = migrationHistory[fromIdx];
+    const to = migrationHistory[toIdx];
+    const result = await api('/api/migrations/diff', { ...migrationRequestRef.current, from: from?.id, to: to.id });
+    const diff = { ...result, toSchema: to.schema, from: fromIdx, to: toIdx, fromLabel: result.from, toLabel: result.to };
+    await showSchema(mergeForDiff(diff), { kind: 'diff', name: `${result.from.id}..${result.to.id}` }, to.positions);
+    setCurrentMigrationIndex(toIdx);
     setDiffResult(diff);
-    setDiffSelection({ from: indices[0], to: indices[1] });
-    setDiffMode(true);
-    setShowMigrationPanel(false); // Close panel when entering diff mode
-  }, [selectedForDiff, migrationHistory]);
-
-  const exitDiffMode = useCallback(() => {
-    setDiffMode(false);
-    setDiffResult(null);
-    setDiffSelection({ from: null, to: null });
-    setSelectedForDiff(new Set());
-  }, []);
-
-  const nextMigration = useCallback(() => {
-    if (currentMigrationIndex < migrationHistory.length - 1) {
-      loadMigration(currentMigrationIndex + 1);
-    }
-  }, [currentMigrationIndex, migrationHistory.length, loadMigration]);
-
-  const prevMigration = useCallback(() => {
-    if (currentMigrationIndex > 0) {
-      loadMigration(currentMigrationIndex - 1);
-    }
-  }, [currentMigrationIndex, loadMigration]);
-
-  const handleMigrationFileImport = useCallback(async (file) => {
-    try {
-      const data = await loadMigrationsFromJson(file);
-      setMigrationHistory(data.migrations);
-      setCurrentMigrationIndex(data.migrations.length - 1); // Start at latest
-      // Load the latest migration
-      if (data.migrations.length > 0) {
-        await loadMigration(data.migrations.length - 1);
-      }
-      setShowMigrationPanel(true);
-    } catch (err) {
-      alert(`Could not import migration history:
-${err.message}`);
-    }
-  }, [loadMigration]);
-
+  }), [migrationTask, migrationHistory, showSchema]);
 
   const relayout = useCallback(async (nextSpacing = spacingRef.current) => {
     const visible = schema.tables.filter((t) => !hiddenTables.has(t.name));
@@ -442,6 +404,7 @@ ${err.message}`);
       if (e.key === '0') fitView({ padding: 0.12, maxZoom: 1.5, duration: 400 });
       else if (e.key === '+' || e.key === '=') zoomBy(0.15);
       else if (e.key === '-' || e.key === '_') zoomBy(-0.15);
+      else if (e.key === 'm' || e.key === 'M') toggleMigrationPanel();
       else if (pan) setViewport({ x: vp.x + pan[0], y: vp.y + pan[1], zoom: vp.zoom }, { duration: 120 });
       else return;
       e.preventDefault();
@@ -516,8 +479,8 @@ ${err.message}`);
       >
         <ErdActions.Provider value={actions}>
           <ReactFlow
-            nodes={nodes}
-            edges={edges}
+            nodes={diffView.nodes}
+            edges={diffView.edges}
             onNodesChange={onNodesChange}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
@@ -552,7 +515,7 @@ ${err.message}`);
         connectionLabel={connInfo ? `${connInfo.user}@${connInfo.server}` : 'not connected, click to set up'}
         connected={!!connInfo}
         onToggleConnectionMenu={(rect) => setConnMenuAnchor((a) => (a ? null : rect))}
-        selectedDatabase={source.kind === 'db' ? source.name : ''}
+        selectedDatabase={source.kind === 'db' ? source.name : source.kind === 'migration' || source.kind === 'diff' ? openDatabaseName() : ''}
         onSelectDatabase={onSelectDatabase}
         groupsActive={hiddenGroups.size > 0}
         onToggleGroupMenu={(rect) => setGroupMenuAnchor((a) => (a ? null : rect))}
@@ -576,14 +539,6 @@ ${err.message}`);
         // Migration props
         showMigrationPanel={showMigrationPanel}
         onToggleMigrationPanel={toggleMigrationPanel}
-        diffMode={diffMode}
-        diffResult={diffResult}
-        onExitDiffMode={exitDiffMode}
-        migrationHistory={migrationHistory}
-        currentMigrationIndex={currentMigrationIndex}
-        onNextMigration={nextMigration}
-        onPrevMigration={prevMigration}
-        onImportMigrations={handleMigrationFileImport}
       />
       <div id="hint">
         drag tables to arrange · hold Ctrl for a names-only map · scroll to zoom · drag background or arrow keys to pan · click an FK to jump · click a referenced PK for reverse relations · press 0 to fit
@@ -622,24 +577,27 @@ ${err.message}`);
         />
       )}
       <MigrationPanel
-        migrations={migrationHistory}
-        currentIndex={currentMigrationIndex}
-        onLoadMigration={loadMigration}
-        onSelectForDiff={selectForDiff}
-        onNextMigration={nextMigration}
-        onPrevMigration={prevMigration}
-        onCompare={runDiff}
-        selectedForDiff={selectedForDiff}
-        onClose={closeMigrationPanel}
         isOpen={showMigrationPanel}
+        database={['db', 'migration', 'diff'].includes(source.kind) ? openDatabaseName() : ''}
+        migrations={migrationHistory}
+        migrationDir={migrationDir}
+        currentIndex={currentMigrationIndex}
+        diffPair={diffResult}
+        busy={migrationBusy}
+        error={migrationError}
+        onGenerate={generateMigrations}
+        onLoad={loadMigration}
+        onCompare={compareMigrations}
+        onShowLive={source.kind === 'migration' || source.kind === 'diff' ? () => { setDiffResult(null); setCurrentMigrationIndex(-1); loadDatabase(openDatabaseName()); } : null}
+        onClose={closeMigrationPanel}
       />
       <DiffView
         diffResult={diffResult}
-        fromMigration={diffSelection.from !== null ? migrationHistory[diffSelection.from] : null}
-        toMigration={diffSelection.to !== null ? migrationHistory[diffSelection.to] : null}
+        fromMigration={diffResult?.fromLabel}
+        toMigration={diffResult?.toLabel}
         onNavigateToTable={actions.goToTable}
         onClose={exitDiffMode}
-        isOpen={diffMode}
+        isOpen={!!diffResult}
       />
       {loading && (
         <div id="loading-overlay">
