@@ -162,15 +162,20 @@ export default function App() {
     requestAnimationFrame(() => fitView({ padding: 0.12, maxZoom: 1.5 }));
   }, [fitView, setNodes]);
 
-  const relayout = useCallback(async (nextSpacing = spacingRef.current) => {
+  const relayout = useCallback(async (nextSpacing = spacingRef.current, randomSeed) => {
     const visible = schema.tables.filter((t) => !hiddenTables.has(t.name));
-    const { positions, routes: nextRoutes } = await layoutTables(visible, schema.relationships, nextSpacing);
+    const { positions, routes: nextRoutes } = await layoutTables(visible, schema.relationships, nextSpacing, randomSeed);
     clearPositions(source);
     writeRoutes(source, nextRoutes);
     setRoutes(nextRoutes);
     setNodes((ns) => ns.map((n) => (positions[n.id] ? { ...n, position: positions[n.id] } : n)));
     requestAnimationFrame(() => fitView({ padding: 0.12, maxZoom: 1.5, duration: 400 }));
   }, [schema, hiddenTables, source, setNodes, fitView]);
+
+  const randomizeLayout = () => {
+    const randomSeed = Math.floor(Math.random() * 2_147_483_646) + 1;
+    relayout(spacingRef.current, randomSeed);
+  };
 
   const changeSpacing = (dir) => {
     const i = SPACING_STEPS.indexOf(spacing) + dir;
@@ -456,6 +461,7 @@ export default function App() {
         groupsActive={hiddenGroups.size > 0}
         onToggleGroupMenu={(rect) => setGroupMenuAnchor((a) => (a ? null : rect))}
         onRelayout={() => relayout()}
+        onRandomizeLayout={randomizeLayout}
         spacing={spacing}
         spacingSteps={SPACING_STEPS}
         onSpacing={changeSpacing}
