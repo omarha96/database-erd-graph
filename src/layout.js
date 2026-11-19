@@ -45,7 +45,7 @@ const portId = (table, column, side) => `${table}\u0000${column}\u0000${side}`;
  * table positions the route was computed for, so a route can be dropped
  * once either table is dragged.
  */
-export async function layoutTables(tables, relationships, spacing = 1) {
+export async function layoutTables(tables, relationships, spacing = 1, randomSeed) {
   const byName = new Map(tables.map((t) => [t.name, t]));
   const rels = relationships.filter((r) => byName.has(r.source) && byName.has(r.target) && r.source !== r.target);
 
@@ -78,6 +78,7 @@ export async function layoutTables(tables, relationships, spacing = 1) {
     layoutOptions: {
       ...LAYOUT_OPTIONS,
       ...Object.fromEntries(Object.entries(SPACINGS).map(([k, v]) => [k, String(Math.round(v * spacing))])),
+      ...(randomSeed == null ? {} : { 'elk.randomSeed': String(randomSeed) }),
     },
     children: tables.map((t) => ({
       id: t.name,
